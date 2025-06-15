@@ -11,15 +11,35 @@ export const autocompleteCommand = defineCommand({
   handler: (ctx, args) => {
     return `Autocomplete Help
 
-The terminal supports intelligent autocomplete using the Tab key:
+The terminal supports intelligent autocomplete with two modes:
 
-🔧 BASIC USAGE:
+🔧 TAB COMPLETION:
   Tab                    - Complete current word or show suggestions
   Tab Tab                - Cycle through multiple completions
   Shift+Tab              - Cycle backwards through completions
   Arrow Up/Down          - Navigate completion list
   Enter                  - Select highlighted completion
   Escape                 - Close completion list
+
+✨ LIVE SUGGESTIONS:
+  Type                   - Shows suggestions automatically as you type
+  Arrow Up/Down          - Navigate suggestion list
+  Enter                  - Select highlighted suggestion
+  Escape                 - Close suggestion list
+
+  Enable/disable: config terminal live-suggestions true/false
+
+🌐 REAL-TIME DOMAIN SUGGESTIONS:
+  When typing first command (2+ chars, no spaces), see matching domains from Chrome history
+  Searches your history in real-time as you type
+  Click domain suggestions to open URLs directly (no need to type 'open')
+  Visual indicators: ⚡ commands, 🌐 domains, 📁 files, 🎨 themes
+  Test domains: domains test <query>, domains cache, domains clear
+
+🔍 SMART SEARCH:
+  Type anything with spaces (e.g., "javascript tutorials") to search automatically
+  No need to type 'search' command first - just type your query
+  Uses your configured search engine (default: Google)
 
 📁 FILE & DIRECTORY COMPLETION:
   ls doc<Tab>            - Complete to "documents/"
@@ -50,7 +70,9 @@ The terminal supports intelligent autocomplete using the Tab key:
   - Hidden file completion (files starting with .)
   - Automatic common prefix completion
   - Multi-level directory navigation
-  
-Try typing a partial command or filename and press Tab to see it in action!`;
+  - Live suggestions with 300ms debounce
+  - Configurable suggestion modes
+
+Try typing a partial command or filename to see live suggestions, or press Tab for traditional completion!`;
   }
 });

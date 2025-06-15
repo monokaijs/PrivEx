@@ -22,3 +22,6 @@ export const selectBackgroundBrightness = (state: RootState) => state.config.bac
 export const selectSearchConfig = (state: RootState) => state.config.search;
 export const selectSearchEngine = (state: RootState) => state.config.search.engine;
 export const selectSearchNewTab = (state: RootState) => state.config.search.newTab;
+
+export const selectTerminalConfig = (state: RootState) => state.config.terminal;
+export const selectLiveSuggestions = (state: RootState) => state.config.terminal.liveSuggestions;

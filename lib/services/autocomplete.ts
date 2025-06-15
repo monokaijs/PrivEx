@@ -4,11 +4,12 @@ import { PathUtils } from './filesystem-types';
 import { presetThemes } from '../themes/presets';
 import { store } from '../store';
 import { selectCustomThemes } from '../store/selectors';
-import { getCompletionsFromProviders } from './autocomplete-providers';
-import type { CompletionContext as ProviderContext } from './autocomplete-providers';
+import { getCompletionsFromProviders, getCompletionsWithTypes } from './autocomplete-providers';
+import type { CompletionContext as ProviderContext, CompletionWithType } from './autocomplete-providers';
 
 export interface CompletionResult {
   completions: string[];
+  completionsWithTypes?: CompletionWithType[];
   commonPrefix: string;
   hasMultiple: boolean;
   originalInput: string;
@@ -47,10 +48,16 @@ export class AutocompleteService {
 
     // Use the new provider system for more comprehensive completions
     const completions = await getCompletionsFromProviders(context);
+    const completionsWithTypes = await getCompletionsWithTypes(context);
 
     // Filter completions based on current input
     const filtered = completions.filter(completion =>
       completion.toLowerCase().startsWith(context.currentArg.toLowerCase())
+    );
+
+    // Filter typed completions
+    const filteredWithTypes = completionsWithTypes.filter(completion =>
+      completion.value.toLowerCase().startsWith(context.currentArg.toLowerCase())
     );
 
     // Find common prefix
@@ -62,6 +69,7 @@ export class AutocompleteService {
 
     return {
       completions: filtered,
+      completionsWithTypes: filteredWithTypes,
       commonPrefix,
       hasMultiple: filtered.length > 1,
       originalInput: input,

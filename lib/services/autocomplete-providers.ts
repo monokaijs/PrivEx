@@ -4,11 +4,13 @@ import { getRegisteredCommands } from '../commands/registry';
 import { presetThemes } from '../themes/presets';
 import { store } from '../store';
 import { selectCustomThemes } from '../store/selectors';
+import { domainService } from './domains';
 
 export interface CompletionProvider {
   name: string;
   canComplete: (context: CompletionContext) => boolean;
   getCompletions: (context: CompletionContext) => Promise<string[]> | string[];
+  priority?: number; // Higher priority providers appear first
 }
 
 export interface CompletionContext {
@@ -26,6 +28,7 @@ export interface CompletionContext {
  */
 export const commandCompletionProvider: CompletionProvider = {
   name: 'commands',
+  priority: 100, // High priority for commands
   canComplete: (context) => context.isCommandPosition,
   getCompletions: (context) => {
     const commands = getRegisteredCommands();
@@ -40,6 +43,33 @@ export const commandCompletionProvider: CompletionProvider = {
     return Array.from(commandNames)
       .filter(name => name.toLowerCase().startsWith(context.currentArg.toLowerCase()))
       .sort();
+  }
+};
+
+/**
+ * Domain completion provider - suggests domains from Chrome history in real-time
+ */
+export const domainCompletionProvider: CompletionProvider = {
+  name: 'domains',
+  priority: 50, // Lower priority than commands but higher than files
+  canComplete: (context) => {
+    // Only suggest domains when:
+    // 1. Typing the first command (no spaces in input yet)
+    // 2. At least 2 characters typed
+    // 3. Currently in command position
+    const hasNoSpaces = !context.input.includes(' ');
+    return context.isCommandPosition && context.currentArg.length >= 2 && hasNoSpaces;
+  },
+  getCompletions: async (context) => {
+    try {
+      // Get domain suggestions in real-time (limit to 5 for good UX)
+      const domains = await domainService.getDomainSuggestions(context.currentArg, 5);
+
+      return domains;
+    } catch (error) {
+      console.warn('Domain completion provider failed:', error);
+      return [];
+    }
   }
 };
 
@@ -243,6 +273,7 @@ export const urlCompletionProvider: CompletionProvider = {
  */
 export const completionProviders: CompletionProvider[] = [
   commandCompletionProvider,
+  domainCompletionProvider, // Add domain provider
   fileCompletionProvider,
   themeCompletionProvider,
   searchEngineCompletionProvider,
@@ -251,23 +282,101 @@ export const completionProviders: CompletionProvider[] = [
   urlCompletionProvider
 ];
 
+export interface CompletionWithType {
+  value: string;
+  type: 'command' | 'domain' | 'file' | 'theme' | 'config' | 'url' | 'other';
+  provider: string;
+}
+
 /**
- * Get completions from all applicable providers
+ * Get completions from all applicable providers with type information
  */
 export async function getCompletionsFromProviders(context: CompletionContext): Promise<string[]> {
-  const allCompletions: string[] = [];
+  const completionsByProvider: { provider: CompletionProvider; completions: string[] }[] = [];
 
-  for (const provider of completionProviders) {
+  // Sort providers by priority (higher first)
+  const sortedProviders = [...completionProviders].sort((a, b) => (b.priority || 0) - (a.priority || 0));
+
+  for (const provider of sortedProviders) {
     if (provider.canComplete(context)) {
       try {
         const completions = await provider.getCompletions(context);
-        allCompletions.push(...completions);
+        if (completions.length > 0) {
+          completionsByProvider.push({ provider, completions });
+        }
       } catch (error) {
         console.warn(`Completion provider ${provider.name} failed:`, error);
       }
     }
   }
 
-  // Remove duplicates and sort
-  return Array.from(new Set(allCompletions)).sort();
+  // Combine completions maintaining provider order
+  const allCompletions: string[] = [];
+  const seen = new Set<string>();
+
+  for (const { completions } of completionsByProvider) {
+    for (const completion of completions) {
+      if (!seen.has(completion)) {
+        seen.add(completion);
+        allCompletions.push(completion);
+      }
+    }
+  }
+
+  return allCompletions;
+}
+
+/**
+ * Get completions with type information for enhanced display
+ */
+export async function getCompletionsWithTypes(context: CompletionContext): Promise<CompletionWithType[]> {
+  const completionsByProvider: { provider: CompletionProvider; completions: string[] }[] = [];
+
+  // Sort providers by priority (higher first)
+  const sortedProviders = [...completionProviders].sort((a, b) => (b.priority || 0) - (a.priority || 0));
+
+  for (const provider of sortedProviders) {
+    if (provider.canComplete(context)) {
+      try {
+        const completions = await provider.getCompletions(context);
+        if (completions.length > 0) {
+          completionsByProvider.push({ provider, completions });
+        }
+      } catch (error) {
+        console.warn(`Completion provider ${provider.name} failed:`, error);
+      }
+    }
+  }
+
+  // Combine completions with type information
+  const allCompletions: CompletionWithType[] = [];
+  const seen = new Set<string>();
+
+  for (const { provider, completions } of completionsByProvider) {
+    const type = getCompletionType(provider.name);
+    for (const completion of completions) {
+      if (!seen.has(completion)) {
+        seen.add(completion);
+        allCompletions.push({
+          value: completion,
+          type,
+          provider: provider.name
+        });
+      }
+    }
+  }
+
+  return allCompletions;
+}
+
+function getCompletionType(providerName: string): CompletionWithType['type'] {
+  switch (providerName) {
+    case 'commands': return 'command';
+    case 'domains': return 'domain';
+    case 'files': return 'file';
+    case 'themes': return 'theme';
+    case 'config': return 'config';
+    case 'urlCompletionProvider': return 'url';
+    default: return 'other';
+  }
 }

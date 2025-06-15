@@ -10,9 +10,14 @@ interface SearchConfig {
   newTab: boolean;
 }
 
+interface TerminalConfig {
+  liveSuggestions: boolean;
+}
+
 interface ConfigState {
   background: BackgroundConfig;
   search: SearchConfig;
+  terminal: TerminalConfig;
 }
 
 const initialState: ConfigState = {
@@ -23,6 +28,9 @@ const initialState: ConfigState = {
   search: {
     engine: 'google',
     newTab: true,
+  },
+  terminal: {
+    liveSuggestions: true,
   },
 };
 
@@ -51,6 +59,12 @@ const configSlice = createSlice({
     setSearchConfig: (state, action: PayloadAction<SearchConfig>) => {
       state.search = action.payload;
     },
+    setLiveSuggestions: (state, action: PayloadAction<boolean>) => {
+      state.terminal.liveSuggestions = action.payload;
+    },
+    setTerminalConfig: (state, action: PayloadAction<TerminalConfig>) => {
+      state.terminal = action.payload;
+    },
   },
 });
 
@@ -60,7 +74,9 @@ export const {
   setBackgroundConfig,
   setSearchEngine,
   setSearchNewTab,
-  setSearchConfig
+  setSearchConfig,
+  setLiveSuggestions,
+  setTerminalConfig
 } = configSlice.actions;
 
 export default configSlice.reducer;

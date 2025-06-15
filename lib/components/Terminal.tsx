@@ -8,7 +8,8 @@ import {
   selectBackgroundBrightness,
   selectBackgroundConfig,
   selectCurrentTheme,
-  selectCurrentThemeName
+  selectCurrentThemeName,
+  selectLiveSuggestions
 } from '../store/selectors';
 import {autocompleteService, CompletionResult} from '../services/autocomplete';
 import CompletionList from './CompletionList';
@@ -68,6 +69,11 @@ export const Terminal: React.FC<TerminalProps> = ({
   const [showCompletions, setShowCompletions] = useState(false);
   const [completionPosition, setCompletionPosition] = useState({ x: 0, y: 0 });
 
+  // Live suggestions state
+  const [showLiveSuggestions, setShowLiveSuggestions] = useState(false);
+  const [liveSuggestionResult, setLiveSuggestionResult] = useState<CompletionResult | null>(null);
+  const liveSuggestionsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -76,6 +82,7 @@ export const Terminal: React.FC<TerminalProps> = ({
   const currentThemeName = useAppSelector(selectCurrentThemeName);
   const backgroundConfig = useAppSelector(selectBackgroundConfig);
   const brightness = useAppSelector(selectBackgroundBrightness);
+  const liveSuggestionsEnabled = useAppSelector(selectLiveSuggestions);
 
   useEffect(() => {
     if (!terminalRef.current) return;
@@ -245,7 +252,50 @@ export const Terminal: React.FC<TerminalProps> = ({
     const [commandName, ...args] = trimmedCmd.split(' ');
 
     try {
-      // Execute command
+      // Check if command exists
+      const { getCommand } = await import('../commands/registry');
+      const command = getCommand(commandName);
+
+      // If command doesn't exist and input contains whitespace, treat as search
+      if (!command && trimmedCmd.includes(' ')) {
+        // Execute as search command
+        const { executeCommand: execCmd } = await import('../commands/registry');
+        const result = await execCmd('search', [trimmedCmd], ctx);
+
+        // Display result
+        if (result.output !== undefined) {
+          const lines = result.output.split('\n');
+          lines.forEach(line => {
+            terminal.writeln('');
+            if (result.type === 'error') {
+              terminal.write(`\x1b[31m${line}\x1b[0m`); // Red for errors
+            } else if (result.type === 'success') {
+              terminal.write(`\x1b[32m${line}\x1b[0m`); // Green for success
+            } else {
+              terminal.write(`\x1b[36m${line}\x1b[0m`); // Cyan for info
+            }
+          });
+          terminal.writeln('');
+        }
+
+        // Update history
+        setHistory(prev => [...prev, {
+          command: trimmedCmd,
+          output: (result.output || ''),
+          type: result.type
+        }]);
+
+        // Update command history
+        setCommandHistory(prev => [...prev, trimmedCmd]);
+        setHistoryIndex(-1);
+        setCurrentInput('');
+        if (inputRef.current) {
+          inputRef.current.value = '';
+        }
+        return;
+      }
+
+      // Execute command normally
       const result = await executeCommand(commandName, args, ctx);
 
       // Display result if there's output
@@ -339,37 +389,145 @@ export const Terminal: React.FC<TerminalProps> = ({
       setSelectedCompletionIndex(0);
       setShowCompletions(true);
 
-      // Calculate position for completion list
+      // Calculate position for completion list (above the input)
       if (inputRef.current) {
         const rect = inputRef.current.getBoundingClientRect();
+        const spacing = 8; // Space between input and list
         setCompletionPosition({
           x: rect.left,
-          y: rect.bottom + 4
+          y: rect.top - spacing // Position just above the input, let CompletionList handle height
         });
       }
     }
   }, [currentInput]);
 
-  const handleCompletionSelect = useCallback((completion: string, index: number) => {
-    if (!completionResult || !inputRef.current) return;
+  // Handle live suggestions (triggered on input change)
+  const handleLiveSuggestions = useCallback(async (input: string) => {
+    if (!liveSuggestionsEnabled || !inputRef.current || input.trim() === '') {
+      setShowLiveSuggestions(false);
+      setLiveSuggestionResult(null);
+      return;
+    }
 
-    const newInput = completionResult.originalInput.substring(0, completionResult.replaceStart) +
-                    completion +
-                    completionResult.originalInput.substring(completionResult.replaceEnd);
+    // Clear existing timeout
+    if (liveSuggestionsTimeoutRef.current) {
+      clearTimeout(liveSuggestionsTimeoutRef.current);
+    }
 
-    setCurrentInput(newInput);
-    inputRef.current.value = newInput;
+    // Debounce the suggestions
+    liveSuggestionsTimeoutRef.current = setTimeout(async () => {
+      try {
+        const cursorPosition = inputRef.current?.selectionStart || input.length;
+        const result = await autocompleteService.getCompletions(input, cursorPosition);
 
-    // Set cursor position after the completion
-    const newCursorPos = completionResult.replaceStart + completion.length;
-    setTimeout(() => {
-      inputRef.current?.setSelectionRange(newCursorPos, newCursorPos);
-      inputRef.current?.focus();
-    }, 0);
+        if (result.completions.length > 0) {
+          setLiveSuggestionResult(result);
+          setShowLiveSuggestions(true);
 
+          // Calculate position above the input
+          if (inputRef.current) {
+            const rect = inputRef.current.getBoundingClientRect();
+            const spacing = 8; // Space between input and list
+            setCompletionPosition({
+              x: rect.left,
+              y: rect.top - spacing // Position just above the input, let CompletionList handle height
+            });
+          }
+        } else {
+          setShowLiveSuggestions(false);
+          setLiveSuggestionResult(null);
+        }
+      } catch (error) {
+        // Silently handle errors in live suggestions
+        setShowLiveSuggestions(false);
+        setLiveSuggestionResult(null);
+      }
+    }, 100); // 300ms debounce
+  }, [liveSuggestionsEnabled]);
+
+  const handleCompletionSelect = useCallback(async (completion: string, index: number) => {
+    // Use the appropriate completion result (Tab completion or live suggestions)
+    const activeResult = showCompletions ? completionResult : liveSuggestionResult;
+    if (!activeResult || !inputRef.current) return;
+
+    // Check if this is a domain suggestion (web URL)
+    const isDomainSuggestion = activeResult.completionsWithTypes &&
+                              activeResult.completionsWithTypes[index]?.type === 'domain';
+
+    if (isDomainSuggestion) {
+      // For domain suggestions, open URL directly instead of setting input
+      try {
+        const url = completion.startsWith('http') ? completion : `https://${completion}`;
+
+        // Execute open command directly
+        const { executeCommand } = await import('../commands/registry');
+        const ctx = {
+          history,
+          setHistory,
+          input: currentInput,
+          setInput: setCurrentInput,
+          commandHistory,
+          setCommandHistory,
+          setHistoryIndex
+        };
+
+        await executeCommand('open', [url], ctx);
+
+        // Clear input and show in terminal
+        const terminal = xtermRef.current;
+        if (terminal) {
+          terminal.writeln(`$ open ${url}`);
+          terminal.writeln('');
+          terminal.write(`\x1b[32mOpening ${completion}...\x1b[0m`);
+          terminal.writeln('');
+        }
+
+        // Update history
+        setHistory(prev => [...prev, {
+          command: `open ${url}`,
+          output: `Opening ${completion}...`,
+          type: 'success'
+        }]);
+
+        // Update command history
+        setCommandHistory(prev => [...prev, `open ${url}`]);
+        setHistoryIndex(-1);
+        setCurrentInput('');
+        if (inputRef.current) {
+          inputRef.current.value = '';
+        }
+      } catch (error) {
+        console.error('Failed to open URL:', error);
+        // Fall back to normal completion behavior
+        const newInput = activeResult.originalInput.substring(0, activeResult.replaceStart) +
+                        completion +
+                        activeResult.originalInput.substring(activeResult.replaceEnd);
+        setCurrentInput(newInput);
+        inputRef.current.value = newInput;
+      }
+    } else {
+      // Normal completion behavior for commands, files, etc.
+      const newInput = activeResult.originalInput.substring(0, activeResult.replaceStart) +
+                      completion +
+                      activeResult.originalInput.substring(activeResult.replaceEnd);
+
+      setCurrentInput(newInput);
+      inputRef.current.value = newInput;
+
+      // Set cursor position after the completion
+      const newCursorPos = activeResult.replaceStart + completion.length;
+      setTimeout(() => {
+        inputRef.current?.setSelectionRange(newCursorPos, newCursorPos);
+        inputRef.current?.focus();
+      }, 0);
+    }
+
+    // Hide both types of completions
     setShowCompletions(false);
     setCompletionResult(null);
-  }, [completionResult]);
+    setShowLiveSuggestions(false);
+    setLiveSuggestionResult(null);
+  }, [completionResult, liveSuggestionResult, showCompletions, history, setHistory, currentInput, setCurrentInput, commandHistory, setCommandHistory, setHistoryIndex]);
 
   const handleInputKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     const terminal = xtermRef.current;
@@ -408,20 +566,27 @@ export const Terminal: React.FC<TerminalProps> = ({
       setCompletionResult(null);
     }
 
-    // Handle completion navigation
-    if (showCompletions && completionResult) {
+    // Hide live suggestions on certain key presses
+    if (showLiveSuggestions && ['Escape', 'Enter'].includes(e.key)) {
+      setShowLiveSuggestions(false);
+      setLiveSuggestionResult(null);
+    }
+
+    // Handle completion navigation (works for both Tab completions and live suggestions)
+    const activeCompletions = showCompletions ? completionResult : (showLiveSuggestions ? liveSuggestionResult : null);
+    if ((showCompletions || showLiveSuggestions) && activeCompletions) {
       if (e.key === 'ArrowUp') {
         e.preventDefault();
         const newIndex = selectedCompletionIndex > 0
           ? selectedCompletionIndex - 1
-          : completionResult.completions.length - 1;
+          : activeCompletions.completions.length - 1;
         setSelectedCompletionIndex(newIndex);
         return;
       }
 
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        const newIndex = selectedCompletionIndex < completionResult.completions.length - 1
+        const newIndex = selectedCompletionIndex < activeCompletions.completions.length - 1
           ? selectedCompletionIndex + 1
           : 0;
         setSelectedCompletionIndex(newIndex);
@@ -430,7 +595,7 @@ export const Terminal: React.FC<TerminalProps> = ({
 
       if (e.key === 'Enter') {
         e.preventDefault();
-        handleCompletionSelect(completionResult.completions[selectedCompletionIndex], selectedCompletionIndex);
+        handleCompletionSelect(activeCompletions.completions[selectedCompletionIndex], selectedCompletionIndex);
         return;
       }
 
@@ -438,6 +603,8 @@ export const Terminal: React.FC<TerminalProps> = ({
         e.preventDefault();
         setShowCompletions(false);
         setCompletionResult(null);
+        setShowLiveSuggestions(false);
+        setLiveSuggestionResult(null);
         return;
       }
     }
@@ -459,11 +626,13 @@ export const Terminal: React.FC<TerminalProps> = ({
       }
       setShowCompletions(false);
       setCompletionResult(null);
+      setShowLiveSuggestions(false);
+      setLiveSuggestionResult(null);
       return;
     }
 
-    // Handle Up/Down arrows for command history
-    if (e.key === 'ArrowUp') {
+    // Handle Up/Down arrows for command history (only if no completions are shown)
+    if (e.key === 'ArrowUp' && !showCompletions && !showLiveSuggestions) {
       e.preventDefault();
       if (commandHistory.length > 0) {
         const newIndex = historyIndex === -1 ? commandHistory.length - 1 : Math.max(0, historyIndex - 1);
@@ -473,11 +642,14 @@ export const Terminal: React.FC<TerminalProps> = ({
         if (inputRef.current) {
           inputRef.current.value = command;
         }
+        // Hide live suggestions when navigating history
+        setShowLiveSuggestions(false);
+        setLiveSuggestionResult(null);
       }
       return;
     }
 
-    if (e.key === 'ArrowDown') {
+    if (e.key === 'ArrowDown' && !showCompletions && !showLiveSuggestions) {
       e.preventDefault();
       if (historyIndex >= 0) {
         const newIndex = historyIndex + 1;
@@ -495,21 +667,29 @@ export const Terminal: React.FC<TerminalProps> = ({
             inputRef.current.value = command;
           }
         }
+        // Hide live suggestions when navigating history
+        setShowLiveSuggestions(false);
+        setLiveSuggestionResult(null);
       }
       return;
     }
-  }, [currentInput, commandHistory, historyIndex, handleExecuteCommand, isComposing, showCompletions, completionResult, selectedCompletionIndex, handleTabCompletion, handleCompletionSelect]);
+  }, [currentInput, commandHistory, historyIndex, handleExecuteCommand, isComposing, showCompletions, completionResult, selectedCompletionIndex, handleTabCompletion, handleCompletionSelect, showLiveSuggestions, liveSuggestionResult]);
 
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     if (!isComposing) {
-      setCurrentInput(e.target.value);
-      // Hide completions when input changes
+      const newValue = e.target.value;
+      setCurrentInput(newValue);
+
+      // Hide Tab completions when input changes
       if (showCompletions) {
         setShowCompletions(false);
         setCompletionResult(null);
       }
+
+      // Trigger live suggestions
+      handleLiveSuggestions(newValue);
     }
-  }, [isComposing, showCompletions]);
+  }, [isComposing, showCompletions, handleLiveSuggestions]);
 
   const handleCompositionStart = useCallback(() => {
     setIsComposing(true);
@@ -554,6 +734,15 @@ export const Terminal: React.FC<TerminalProps> = ({
     if (inputRef.current) {
       inputRef.current.focus();
     }
+  }, []);
+
+  // Cleanup live suggestions timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (liveSuggestionsTimeoutRef.current) {
+        clearTimeout(liveSuggestionsTimeoutRef.current);
+      }
+    };
   }, []);
 
   return (
@@ -768,13 +957,24 @@ export const Terminal: React.FC<TerminalProps> = ({
         />
       </div>
 
-      {/* Autocomplete completion list */}
+      {/* Tab-triggered autocomplete completion list */}
       <CompletionList
-        completions={completionResult?.completions || []}
+        completions={completionResult?.completionsWithTypes || completionResult?.completions || []}
         selectedIndex={selectedCompletionIndex}
         onSelect={handleCompletionSelect}
         position={completionPosition}
         visible={showCompletions}
+        alignBottom={true}
+      />
+
+      {/* Live suggestions completion list */}
+      <CompletionList
+        completions={liveSuggestionResult?.completionsWithTypes || liveSuggestionResult?.completions || []}
+        selectedIndex={selectedCompletionIndex}
+        onSelect={handleCompletionSelect}
+        position={completionPosition}
+        visible={showLiveSuggestions}
+        alignBottom={true}
       />
     </div>
   );

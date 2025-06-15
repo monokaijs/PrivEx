@@ -11,6 +11,6 @@ export default defineConfig({
   manifest: {
     name: 'Privex',
     description: 'A terminal-style new tab page for Chrome',
-    permissions: ['storage'],
+    permissions: ['storage', 'history'],
   },
 });

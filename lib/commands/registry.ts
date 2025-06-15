@@ -55,6 +55,7 @@ import {
 
 import { configCommand } from './config';
 import { autocompleteCommand } from './autocomplete';
+import { domainsCommand } from './domains';
 
 const commands: Record<string, Command> = {};
 
@@ -168,6 +169,7 @@ export function initializeCommands(): void {
 
   registerCommand(configCommand);
   registerCommand(autocompleteCommand);
+  registerCommand(domainsCommand);
 }
 
 initializeCommands();
