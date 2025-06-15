@@ -12,27 +12,27 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+
     strategy:
       matrix:
         browser: [chrome, firefox]
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
         node-version: '18'
         cache: 'npm'
-        
+
     - name: Install dependencies
       run: yarn install
-      
+
     - name: Type check
       run: npm run compile
-      
+
     - name: Build extension for ${{ matrix.browser }}
       run: |
         if [ "${{ matrix.browser }}" = "firefox" ]; then
@@ -40,7 +40,7 @@ jobs:
         else
           npm run build
         fi
-        
+
     - name: Create zip for ${{ matrix.browser }}
       run: |
         if [ "${{ matrix.browser }}" = "firefox" ]; then
@@ -48,15 +48,15 @@ jobs:
         else
           npm run zip
         fi
-        
+
     - name: Get package version
       id: package-version
       run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
-      
+
     - name: Get commit SHA
       id: commit-sha
       run: echo "sha=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_OUTPUT
-      
+
     - name: Determine artifact name
       id: artifact-name
       run: |
@@ -65,7 +65,7 @@ jobs:
         else
           echo "name=wxt-react-starter-${{ matrix.browser }}-${{ steps.commit-sha.outputs.sha }}" >> $GITHUB_OUTPUT
         fi
-        
+
     - name: Find zip file
       id: find-zip
       run: |
@@ -76,19 +76,19 @@ jobs:
         fi
         echo "zip_file=$ZIP_FILE" >> $GITHUB_OUTPUT
         echo "Found zip file: $ZIP_FILE"
-        
+
     - name: Upload extension artifact
       uses: actions/upload-artifact@v4
       with:
         name: ${{ steps.artifact-name.outputs.name }}
         path: ${{ steps.find-zip.outputs.zip_file }}
         retention-days: 30
-        
+
     - name: Upload to release (if release event)
       if: github.event_name == 'release'
       uses: actions/upload-release-asset@v1
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.PAT }}
       with:
         upload_url: ${{ github.event.release.upload_url }}
         asset_path: ${{ steps.find-zip.outputs.zip_file }}
@@ -99,7 +99,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     if: always()
-    
+
     steps:
     - name: Build Summary
       run: |
