@@ -112,7 +112,7 @@ jobs:
             ZIP_FILE=$(find .output -name "*.zip" ! -name "*firefox*" | head -1)
           fi
           
-          NEW_NAME="wxt-react-starter-${{ matrix.browser }}-${{ steps.get_version.outputs.tag }}.zip"
+          NEW_NAME="privex-${{ matrix.browser }}-${{ steps.get_version.outputs.tag }}.zip"
           cp "$ZIP_FILE" "$NEW_NAME"
           
           echo "zip_file=$NEW_NAME" >> $GITHUB_OUTPUT

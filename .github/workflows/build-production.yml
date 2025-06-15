@@ -61,9 +61,9 @@ jobs:
       id: artifact-name
       run: |
         if [ "$GITHUB_EVENT_NAME" = "release" ]; then
-          echo "name=wxt-react-starter-${{ matrix.browser }}-v${{ steps.package-version.outputs.version }}" >> $GITHUB_OUTPUT
+          echo "name=privex-${{ matrix.browser }}-v${{ steps.package-version.outputs.version }}" >> $GITHUB_OUTPUT
         else
-          echo "name=wxt-react-starter-${{ matrix.browser }}-${{ steps.commit-sha.outputs.sha }}" >> $GITHUB_OUTPUT
+          echo "name=privex-${{ matrix.browser }}-${{ steps.commit-sha.outputs.sha }}" >> $GITHUB_OUTPUT
         fi
 
     - name: Find zip file
