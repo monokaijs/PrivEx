@@ -2,7 +2,7 @@
   "name": "privex",
   "description": "a chrome extension for nerds",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.2.0",
   "type": "module",
   "scripts": {
     "dev": "wxt",
