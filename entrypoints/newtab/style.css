@@ -1,0 +1,183 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap');
+
+:root {
+  --terminal-bg: #000000;
+  --terminal-bg-secondary: #111111;
+  --terminal-text: #00ff00;
+  --terminal-text-secondary: #00cc00;
+  --terminal-text-dim: #666666;
+  --terminal-prompt: #00ff00;
+  --terminal-cursor: #00ff00;
+  --terminal-success: #00ff00;
+  --terminal-error: #ff0000;
+  --terminal-info: #ffff00;
+  --terminal-warning: #ff8800;
+  --terminal-selection: #000000;
+  --terminal-selection-bg: #00ff00;
+  --terminal-scrollbar: #00ff00;
+  --terminal-scrollbar-track: #000000;
+  --terminal-border: #00ff00;
+  --terminal-accent: #00ff00;
+  --terminal-font-family: "JetBrains Mono", 'Courier New', 'Monaco', 'Menlo', monospace;
+  --terminal-font-size: 14px;
+  --terminal-line-height: 1.4;
+  --terminal-font-weight: normal;
+  --terminal-padding: 20px;
+  --terminal-border-radius: 0px;
+  --terminal-cursor-blink-speed: 500ms;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+  font-family: var(--terminal-font-family);
+  font-optical-sizing: auto;
+  background-color: var(--terminal-bg);
+  color: var(--terminal-text);
+  overflow: hidden;
+}
+
+body {
+  height: 100%;
+  font-family: var(--terminal-font-family);
+  font-optical-sizing: auto;
+  background-color: var(--terminal-bg);
+  color: var(--terminal-text);
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+}
+
+
+
+#root {
+  height: 100vh;
+  width: 100vw;
+}
+
+.terminal-container {
+  height: 100vh;
+  width: 100vw;
+  background-color: var(--terminal-bg);
+  color: var(--terminal-text);
+  font-family: var(--terminal-font-family);
+  font-size: var(--terminal-font-size);
+  line-height: var(--terminal-line-height);
+  overflow: hidden;
+  cursor: text;
+}
+
+.terminal-container:focus-within {
+  outline: 2px solid var(--terminal-accent);
+  outline-offset: -2px;
+}
+
+::selection {
+  background-color: var(--terminal-selection-bg);
+  color: var(--terminal-selection);
+}
+
+.terminal-container ::-webkit-scrollbar {
+  width: 8px;
+}
+
+.terminal-container ::-webkit-scrollbar-track {
+  background: var(--terminal-scrollbar-track);
+}
+
+.terminal-container ::-webkit-scrollbar-thumb {
+  background: var(--terminal-scrollbar);
+  border-radius: 4px;
+}
+
+.terminal-container ::-webkit-scrollbar-thumb:hover {
+  background: var(--terminal-accent);
+}
+
+/* Cursor blinking animation */
+@keyframes cursor-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.cursor-blink {
+  animation: cursor-blink var(--terminal-cursor-blink-speed, 500ms) infinite;
+}
+
+.xterm-viewport {
+  overflow: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  background-color: transparent!important;
+}
+
+.xterm-viewport::-webkit-scrollbar {
+  display: none;
+}
+
+/* Autocomplete styles */
+.completion-list {
+  position: fixed;
+  background-color: var(--terminal-bg-secondary, var(--terminal-bg));
+  border: 1px solid var(--terminal-border, var(--terminal-text));
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  min-width: 200px;
+  max-width: 400px;
+  max-height: 300px;
+  overflow: hidden;
+  font-family: var(--terminal-font-family);
+  font-size: var(--terminal-font-size);
+  backdrop-filter: blur(8px);
+}
+
+.completion-item {
+  padding: 6px 12px;
+  cursor: pointer;
+  color: var(--terminal-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background-color 0.1s ease;
+  border-bottom: 1px solid var(--terminal-text-dim, var(--terminal-border));
+}
+
+.completion-item:last-child {
+  border-bottom: none;
+}
+
+.completion-item:hover,
+.completion-item.selected {
+  background-color: var(--terminal-accent, var(--terminal-text));
+  color: var(--terminal-bg);
+}
+
+.completion-more {
+  padding: 6px 12px;
+  color: var(--terminal-text-dim, var(--terminal-text-secondary));
+  font-style: italic;
+  border-top: 1px solid var(--terminal-text-dim, var(--terminal-border));
+  background-color: var(--terminal-bg-secondary, var(--terminal-bg));
+}
+
+/* Animation for completion list */
+@keyframes completion-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.completion-list {
+  animation: completion-fade-in 0.15s ease-out;
+}

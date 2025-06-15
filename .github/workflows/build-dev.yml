@@ -1,0 +1,91 @@
+name: Build Development Extension
+
+on:
+  workflow_dispatch:
+    inputs:
+      browser:
+        description: 'Browser to build for'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+        - both
+        - chrome
+        - firefox
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        browser: ${{ 
+          github.event.inputs.browser == 'both' && fromJSON('["chrome", "firefox"]') ||
+          fromJSON(format('["{0}"]', github.event.inputs.browser))
+        }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build extension for ${{ matrix.browser }}
+      run: |
+        if [ "${{ matrix.browser }}" = "firefox" ]; then
+          npm run build:firefox
+        else
+          npm run build
+        fi
+        
+    - name: Create zip for ${{ matrix.browser }}
+      run: |
+        if [ "${{ matrix.browser }}" = "firefox" ]; then
+          npm run zip:firefox
+        else
+          npm run zip
+        fi
+        
+    - name: Get commit info
+      id: commit-info
+      run: |
+        echo "sha=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_OUTPUT
+        echo "date=$(date +'%Y%m%d-%H%M')" >> $GITHUB_OUTPUT
+        
+    - name: Find zip file
+      id: find-zip
+      run: |
+        if [ "${{ matrix.browser }}" = "firefox" ]; then
+          ZIP_FILE=$(find .output -name "*firefox*.zip" | head -1)
+        else
+          ZIP_FILE=$(find .output -name "*.zip" ! -name "*firefox*" | head -1)
+        fi
+        echo "zip_file=$ZIP_FILE" >> $GITHUB_OUTPUT
+        echo "Found zip file: $ZIP_FILE"
+        
+    - name: Upload development build
+      uses: actions/upload-artifact@v4
+      with:
+        name: wxt-react-starter-${{ matrix.browser }}-dev-${{ steps.commit-info.outputs.date }}-${{ steps.commit-info.outputs.sha }}
+        path: ${{ steps.find-zip.outputs.zip_file }}
+        retention-days: 7
+        
+    - name: Build Summary
+      run: |
+        echo "## 🔧 Development Build Complete" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Build Details" >> $GITHUB_STEP_SUMMARY
+        echo "- **Browser**: ${{ matrix.browser }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Commit**: ${{ steps.commit-info.outputs.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Build Time**: ${{ steps.commit-info.outputs.date }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Download" >> $GITHUB_STEP_SUMMARY
+        echo "The development build is available in the **Artifacts** section above." >> $GITHUB_STEP_SUMMARY
+        echo "Development builds are kept for 7 days." >> $GITHUB_STEP_SUMMARY
