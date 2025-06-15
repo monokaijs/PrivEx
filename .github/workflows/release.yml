@@ -43,7 +43,7 @@ jobs:
         id: create_release
         uses: actions/create-release@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.PAT }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ steps.get_version.outputs.tag }}
           release_name: Release ${{ steps.get_version.outputs.tag }}
@@ -134,4 +134,4 @@ jobs:
         run: |
           gh release upload ${{ steps.get_version.outputs.tag }} "${{ steps.prepare-zip.outputs.zip_file }}" --clobber
         env:
-          GH_TOKEN: ${{ secrets.PAT }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
