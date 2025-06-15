@@ -56,6 +56,7 @@ import {
 import { configCommand } from './config';
 import { autocompleteCommand } from './autocomplete';
 import { domainsCommand } from './domains';
+import { openaiCommand, chatCommand, exitCommand } from './openai';
 
 const commands: Record<string, Command> = {};
 
@@ -170,6 +171,11 @@ export function initializeCommands(): void {
   registerCommand(configCommand);
   registerCommand(autocompleteCommand);
   registerCommand(domainsCommand);
+
+  // OpenAI commands
+  registerCommand(openaiCommand);
+  registerCommand(chatCommand);
+  registerCommand(exitCommand);
 }
 
 initializeCommands();

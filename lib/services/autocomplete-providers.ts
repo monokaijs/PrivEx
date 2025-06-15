@@ -5,6 +5,7 @@ import {presetThemes} from '../themes/presets';
 import {store} from '../store';
 import {selectCustomThemes} from '../store/selectors';
 import {domainService} from './domains';
+import {openaiService} from './openai';
 
 export interface CompletionProvider {
   name: string;
@@ -429,6 +430,68 @@ function getFallbackSuggestions(query: string): string[] {
 }
 
 /**
+ * OpenAI config completion provider
+ */
+export const openaiConfigCompletionProvider: CompletionProvider = {
+  name: 'openaiConfig',
+  canComplete: (context) => {
+    return context.commandName === 'openai' &&
+      context.args.length > 0 &&
+      context.args[0] === 'config' &&
+      context.argIndex === 1;
+  },
+  getCompletions: (context) => {
+    const actions = ['key', 'model', 'prompt'];
+    return actions.filter(action =>
+      action.toLowerCase().startsWith(context.currentArg.toLowerCase())
+    );
+  }
+};
+
+/**
+ * OpenAI chat ID completion provider
+ */
+export const openaiChatCompletionProvider: CompletionProvider = {
+  name: 'openaiChats',
+  canComplete: (context) => {
+    return context.commandName === 'openai' &&
+      context.args.length > 0 &&
+      context.args[0] === 'join' &&
+      context.argIndex === 1;
+  },
+  getCompletions: async (context) => {
+    try {
+      const chats = await openaiService.getAllChats();
+      return chats
+        .map(chat => chat.id)
+        .filter(id => id.toLowerCase().startsWith(context.currentArg.toLowerCase()));
+    } catch (error) {
+      return [];
+    }
+  }
+};
+
+/**
+ * OpenAI model completion provider
+ */
+export const openaiModelCompletionProvider: CompletionProvider = {
+  name: 'openaiModels',
+  canComplete: (context) => {
+    return context.commandName === 'openai' &&
+      context.args.length > 1 &&
+      context.args[0] === 'config' &&
+      context.args[1] === 'model' &&
+      context.argIndex === 2;
+  },
+  getCompletions: (context) => {
+    const models = ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'];
+    return models.filter(model =>
+      model.toLowerCase().startsWith(context.currentArg.toLowerCase())
+    );
+  }
+};
+
+/**
  * All available completion providers
  */
 export const completionProviders: CompletionProvider[] = [
@@ -440,12 +503,15 @@ export const completionProviders: CompletionProvider[] = [
   configCompletionProvider,
   booleanCompletionProvider,
   urlCompletionProvider,
+  openaiConfigCompletionProvider,
+  openaiChatCompletionProvider,
+  openaiModelCompletionProvider,
   googleSuggestionsProvider
 ];
 
 export interface CompletionWithType {
   value: string;
-  type: 'command' | 'domain' | 'file' | 'theme' | 'config' | 'url' | 'search' | 'other';
+  type: 'command' | 'domain' | 'file' | 'theme' | 'config' | 'url' | 'search' | 'openai' | 'other';
   provider: string;
 }
 
@@ -539,6 +605,10 @@ function getCompletionType(providerName: string): CompletionWithType['type'] {
       return 'url';
     case 'googleSuggestions':
       return 'search';
+    case 'openaiConfig':
+    case 'openaiChats':
+    case 'openaiModels':
+      return 'openai';
     default:
       return 'other';
   }

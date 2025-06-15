@@ -10,10 +10,16 @@ import {
   selectBackgroundConfig,
   selectCurrentTheme,
   selectCurrentThemeName,
-  selectLiveSuggestions
+  selectLiveSuggestions,
+  selectIsInChatMode,
+  selectCurrentChat,
+  selectIsStreaming
 } from '../store/selectors';
 import {autocompleteService, CompletionResult} from '../services/autocomplete';
 import CompletionList from './CompletionList';
+import {openaiService} from '../services/openai';
+import {store} from '../store';
+import {exitChatMode, setStreaming} from '../store/slices/openaiSlice';
 import '@xterm/xterm/css/xterm.css';
 
 const convertThemeToXterm = (theme: any) => {
@@ -83,6 +89,27 @@ export const Terminal: React.FC<TerminalProps> = ({
   const brightness = useAppSelector(selectBackgroundBrightness);
   const blur = useAppSelector(selectBackgroundBlur);
   const liveSuggestionsEnabled = useAppSelector(selectLiveSuggestions);
+  const isInChatMode = useAppSelector(selectIsInChatMode);
+  const currentChat = useAppSelector(selectCurrentChat);
+  const isStreaming = useAppSelector(selectIsStreaming);
+
+  useEffect(() => {
+    if (isInChatMode) {
+      store.dispatch(exitChatMode());
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isInChatMode) {
+      setShowCompletions(false);
+      setCompletionResult(null);
+      setShowLiveSuggestions(false);
+      setLiveSuggestionResult(null);
+      if (liveSuggestionsTimeoutRef.current) {
+        clearTimeout(liveSuggestionsTimeoutRef.current);
+      }
+    }
+  }, [isInChatMode]);
 
   useEffect(() => {
     if (!terminalRef.current) return;
@@ -221,6 +248,79 @@ export const Terminal: React.FC<TerminalProps> = ({
     return tld.length >= 2 && /^[a-zA-Z]+$/.test(tld);
   }, []);
 
+  // Handle chat message sending
+  const handleChatMessage = useCallback(async (message: string) => {
+    const terminal = xtermRef.current;
+    if (!terminal || !currentChat) return;
+
+    const trimmedMessage = message.trim();
+    if (!trimmedMessage) return;
+
+    // Clear input immediately when message is committed
+    setCurrentInput('');
+    if (inputRef.current) {
+      inputRef.current.value = '';
+    }
+
+    // Check for exit commands
+    if (trimmedMessage.toLowerCase() === 'exit' || trimmedMessage.toLowerCase() === 'leave') {
+      store.dispatch(exitChatMode());
+      terminal.writeln('');
+      terminal.write('\x1b[36mExited chat mode. You are now back in command mode.\x1b[0m');
+      terminal.writeln('');
+      return;
+    }
+
+    // Echo user message
+    terminal.writeln(`You: ${trimmedMessage}`);
+    terminal.writeln('');
+
+    // Show processing indicator
+    terminal.write('\x1b[33m⏳ Processing...\x1b[0m');
+
+    store.dispatch(setStreaming(true));
+
+    try {
+      const stream = await openaiService.sendMessage(currentChat.id, trimmedMessage);
+
+      // Clear processing indicator and show AI response
+      terminal.write('\r\x1b[K'); // Clear current line
+      terminal.write('\x1b[36mAI: \x1b[0m');
+
+      let assistantResponse = '';
+
+      for await (const chunk of stream) {
+        if (chunk.error) {
+          terminal.write('\r\x1b[K'); // Clear current line
+          terminal.write(`\x1b[31mError: ${chunk.error}\x1b[0m`);
+          terminal.writeln('');
+          break;
+        }
+
+        if (chunk.content) {
+          assistantResponse += chunk.content;
+
+          // Output content naturally, but replace \n with proper terminal newlines
+          const content = chunk.content.replace(/\n/g, '\r\n');
+          terminal.write(content);
+        }
+
+        if (chunk.isComplete) {
+          terminal.writeln('');
+          terminal.writeln('');
+          break;
+        }
+      }
+    } catch (error) {
+      terminal.write('\r\x1b[K'); // Clear current line
+      terminal.write(`\x1b[31mError: ${error instanceof Error ? error.message : 'Unknown error'}\x1b[0m`);
+      terminal.writeln('');
+      terminal.writeln('');
+    } finally {
+      store.dispatch(setStreaming(false));
+    }
+  }, [currentChat]);
+
   // Handle command execution
   const handleExecuteCommand = useCallback(async (input: string) => {
     const terminal = xtermRef.current;
@@ -228,13 +328,15 @@ export const Terminal: React.FC<TerminalProps> = ({
 
     const trimmedCmd = input.trim();
 
+    // Clear input immediately when command is committed
+    setCurrentInput('');
+    if (inputRef.current) {
+      inputRef.current.value = '';
+    }
+
     // Handle blank command - just show new prompt (mimic system terminal)
     if (!trimmedCmd) {
       terminal.writeln('$ ');
-      setCurrentInput('');
-      if (inputRef.current) {
-        inputRef.current.value = '';
-      }
       return;
     }
 
@@ -245,6 +347,17 @@ export const Terminal: React.FC<TerminalProps> = ({
     if (trimmedCmd === 'close' && onClose) {
       onClose();
       return;
+    }
+
+    // Show loading indicator for commands that might take time
+    const firstCommand = trimmedCmd.split(' ')[0];
+    const showLoadingFor = ['chat', 'openai'];
+    let loadingShown = false;
+
+    if (showLoadingFor.includes(firstCommand)) {
+      terminal.writeln('');
+      terminal.write('\x1b[33m⏳ Loading...\x1b[0m');
+      loadingShown = true;
     }
 
     // Create command context
@@ -300,10 +413,6 @@ export const Terminal: React.FC<TerminalProps> = ({
           // Update command history
           setCommandHistory(prev => [...prev, trimmedCmd]);
           setHistoryIndex(-1);
-          setCurrentInput('');
-          if (inputRef.current) {
-            inputRef.current.value = '';
-          }
           return;
         }
 
@@ -340,10 +449,6 @@ export const Terminal: React.FC<TerminalProps> = ({
           // Update command history
           setCommandHistory(prev => [...prev, `open ${url}`]);
           setHistoryIndex(-1);
-          setCurrentInput('');
-          if (inputRef.current) {
-            inputRef.current.value = '';
-          }
           return;
         }
       }
@@ -351,8 +456,19 @@ export const Terminal: React.FC<TerminalProps> = ({
       // Execute command normally
       const result = await executeCommand(commandName, args, ctx);
 
-      // Display result if there's output
-      if (result.output !== undefined) {
+      // Clear loading indicator if it was shown
+      if (loadingShown) {
+        terminal.write('\r\x1b[K'); // Clear current line
+      }
+
+      // Handle special exit chat mode response
+      if (result.output === 'EXIT_CHAT_MODE') {
+        store.dispatch(exitChatMode());
+        terminal.writeln('');
+        terminal.write('\x1b[36mExited chat mode. You are now back in command mode.\x1b[0m');
+        terminal.writeln('');
+      } else if (result.output !== undefined) {
+        // Display result if there's output
         const lines = result.output.split('\n');
         lines.forEach(line => {
           terminal.writeln('');
@@ -374,6 +490,10 @@ export const Terminal: React.FC<TerminalProps> = ({
         type: result.type
       }]);
     } catch (error) {
+      // Clear loading indicator if it was shown
+      if (loadingShown) {
+        terminal.write('\r\x1b[K'); // Clear current line
+      }
       terminal.writeln('');
       terminal.write(`\x1b[31mError: ${error}\x1b[0m`);
       terminal.writeln('');
@@ -382,15 +502,11 @@ export const Terminal: React.FC<TerminalProps> = ({
     // Update command history
     setCommandHistory(prev => [...prev, trimmedCmd]);
     setHistoryIndex(-1);
-    setCurrentInput('');
-    if (inputRef.current) {
-      inputRef.current.value = '';
-    }
   }, [history, currentInput, commandHistory, onClose, isValidDomainOrUrl]);
 
   // Handle autocomplete
   const handleTabCompletion = useCallback(async () => {
-    if (!inputRef.current) return;
+    if (!inputRef.current || isInChatMode) return; // Disable autocomplete in chat mode
 
     const cursorPosition = inputRef.current.selectionStart || 0;
     const result = await autocompleteService.getCompletions(currentInput, cursorPosition);
@@ -447,10 +563,10 @@ export const Terminal: React.FC<TerminalProps> = ({
         });
       }
     }
-  }, [currentInput]);
+  }, [currentInput, isInChatMode]);
 
   const handleLiveSuggestions = useCallback(async (input: string) => {
-    if (!liveSuggestionsEnabled || !inputRef.current || input.trim() === '') {
+    if (!liveSuggestionsEnabled || !inputRef.current || input.trim() === '' || isInChatMode) {
       setShowLiveSuggestions(false);
       setLiveSuggestionResult(null);
       return;
@@ -486,20 +602,25 @@ export const Terminal: React.FC<TerminalProps> = ({
         setLiveSuggestionResult(null);
       }
     }, 50);
-  }, [liveSuggestionsEnabled]);
+  }, [liveSuggestionsEnabled, isInChatMode]);
 
   const handleCompletionSelect = useCallback(async (completion: string, index: number) => {
     // Use the appropriate completion result (Tab completion or live suggestions)
     const activeResult = showCompletions ? completionResult : liveSuggestionResult;
     if (!activeResult || !inputRef.current) return;
 
-    // Check if this is a domain suggestion (web URL)
+    // Clear input immediately for domain and search suggestions (they execute immediately)
     const isDomainSuggestion = activeResult.completionsWithTypes &&
       activeResult.completionsWithTypes[index]?.type === 'domain';
-
-    // Check if this is a search suggestion
     const isSearchSuggestion = activeResult.completionsWithTypes &&
       activeResult.completionsWithTypes[index]?.type === 'search';
+
+    if (isDomainSuggestion || isSearchSuggestion) {
+      setCurrentInput('');
+      if (inputRef.current) {
+        inputRef.current.value = '';
+      }
+    }
 
     if (isDomainSuggestion) {
       // For domain suggestions, open URL directly instead of setting input
@@ -539,10 +660,6 @@ export const Terminal: React.FC<TerminalProps> = ({
         // Update command history
         setCommandHistory(prev => [...prev, `open ${url}`]);
         setHistoryIndex(-1);
-        setCurrentInput('');
-        if (inputRef.current) {
-          inputRef.current.value = '';
-        }
       } catch (error) {
         console.error('Failed to open URL:', error);
         // Fall back to normal completion behavior
@@ -588,10 +705,6 @@ export const Terminal: React.FC<TerminalProps> = ({
         // Update command history
         setCommandHistory(prev => [...prev, `search ${completion}`]);
         setHistoryIndex(-1);
-        setCurrentInput('');
-        if (inputRef.current) {
-          inputRef.current.value = '';
-        }
       } catch (error) {
         console.error('Failed to execute search:', error);
         // Fall back to normal completion behavior
@@ -629,8 +742,8 @@ export const Terminal: React.FC<TerminalProps> = ({
     const terminal = xtermRef.current;
     if (!terminal) return;
 
-    // Handle Tab for autocomplete
-    if (e.key === 'Tab') {
+    // Handle Tab for autocomplete (disabled in chat mode)
+    if (e.key === 'Tab' && !isInChatMode) {
       e.preventDefault();
       if (showCompletions && completionResult) {
         // Navigate through completions
@@ -656,21 +769,41 @@ export const Terminal: React.FC<TerminalProps> = ({
       return;
     }
 
-    // Hide completions on most key presses
-    if (showCompletions && !['ArrowUp', 'ArrowDown', 'Enter'].includes(e.key)) {
+    // Handle Enter first (highest priority)
+    if (e.key === 'Enter' && !e.shiftKey && !isComposing) {
+      e.preventDefault();
+
+      // If completions are shown and not in chat mode, select completion
+      const activeCompletions = showCompletions ? completionResult : (showLiveSuggestions ? liveSuggestionResult : null);
+      if ((showCompletions || showLiveSuggestions) && activeCompletions && !isInChatMode) {
+        handleCompletionSelect(activeCompletions.completions[selectedCompletionIndex], selectedCompletionIndex);
+        return;
+      }
+
+      // Otherwise, execute command or send chat message
+      if (isInChatMode) {
+        handleChatMessage(currentInput);
+      } else {
+        handleExecuteCommand(currentInput);
+      }
+      return;
+    }
+
+    // Hide completions on most key presses (but not in chat mode)
+    if (!isInChatMode && showCompletions && !['ArrowUp', 'ArrowDown', 'Enter'].includes(e.key)) {
       setShowCompletions(false);
       setCompletionResult(null);
     }
 
-    // Hide live suggestions on certain key presses
-    if (showLiveSuggestions && ['Escape', 'Enter'].includes(e.key)) {
+    // Hide live suggestions on certain key presses (but not in chat mode)
+    if (!isInChatMode && showLiveSuggestions && ['Escape'].includes(e.key)) {
       setShowLiveSuggestions(false);
       setLiveSuggestionResult(null);
     }
 
-    // Handle completion navigation (works for both Tab completions and live suggestions)
+    // Handle completion navigation (works for both Tab completions and live suggestions, but not in chat mode)
     const activeCompletions = showCompletions ? completionResult : (showLiveSuggestions ? liveSuggestionResult : null);
-    if ((showCompletions || showLiveSuggestions) && activeCompletions) {
+    if (!isInChatMode && (showCompletions || showLiveSuggestions) && activeCompletions) {
       if (e.key === 'ArrowUp') {
         e.preventDefault();
         const newIndex = selectedCompletionIndex > 0
@@ -689,12 +822,6 @@ export const Terminal: React.FC<TerminalProps> = ({
         return;
       }
 
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        handleCompletionSelect(activeCompletions.completions[selectedCompletionIndex], selectedCompletionIndex);
-        return;
-      }
-
       if (e.key === 'Escape') {
         e.preventDefault();
         setShowCompletions(false);
@@ -703,13 +830,6 @@ export const Terminal: React.FC<TerminalProps> = ({
         setLiveSuggestionResult(null);
         return;
       }
-    }
-
-    // Handle Enter
-    if (e.key === 'Enter' && !e.shiftKey && !isComposing) {
-      e.preventDefault();
-      handleExecuteCommand(currentInput);
-      return;
     }
 
     // Handle Ctrl+C
@@ -769,23 +889,25 @@ export const Terminal: React.FC<TerminalProps> = ({
       }
       return;
     }
-  }, [currentInput, commandHistory, historyIndex, handleExecuteCommand, isComposing, showCompletions, completionResult, selectedCompletionIndex, handleTabCompletion, handleCompletionSelect, showLiveSuggestions, liveSuggestionResult]);
+  }, [currentInput, commandHistory, historyIndex, handleExecuteCommand, handleChatMessage, isComposing, showCompletions, completionResult, selectedCompletionIndex, handleTabCompletion, handleCompletionSelect, showLiveSuggestions, liveSuggestionResult, isInChatMode]);
 
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     if (!isComposing) {
       const newValue = e.target.value;
       setCurrentInput(newValue);
 
-      // Hide Tab completions when input changes
-      if (showCompletions) {
+      // Hide Tab completions when input changes (only in command mode)
+      if (!isInChatMode && showCompletions) {
         setShowCompletions(false);
         setCompletionResult(null);
       }
 
-      // Trigger live suggestions
-      handleLiveSuggestions(newValue);
+      // Trigger live suggestions (only in command mode)
+      if (!isInChatMode) {
+        handleLiveSuggestions(newValue);
+      }
     }
-  }, [isComposing, showCompletions, handleLiveSuggestions]);
+  }, [isComposing, showCompletions, handleLiveSuggestions, isInChatMode]);
 
   const handleCompositionStart = useCallback(() => {
     setIsComposing(true);
@@ -1019,7 +1141,7 @@ export const Terminal: React.FC<TerminalProps> = ({
       >
         <span
           style={{
-            color: currentTheme.colors.success || '#00af00',
+            color: isInChatMode ? (currentTheme.colors.info || '#74c0fc') : (currentTheme.colors.success || '#00af00'),
             fontSize: parseInt(currentTheme.typography?.fontSize || '14'),
             fontFamily: currentTheme.typography?.fontFamily || 'JetBrains Mono, monospace',
             marginRight: '8px',
@@ -1027,7 +1149,7 @@ export const Terminal: React.FC<TerminalProps> = ({
             fontWeight: 'normal'
           }}
         >
-          $
+          {isInChatMode ? (currentChat ? `[${currentChat.name}]` : '[Chat]') : '$'}
         </span>
         <input
           ref={inputRef}
@@ -1047,7 +1169,7 @@ export const Terminal: React.FC<TerminalProps> = ({
             fontFamily: currentTheme.typography?.fontFamily || 'JetBrains Mono, monospace',
             padding: '4px 0'
           }}
-          placeholder="Type a command..."
+          placeholder={isInChatMode ? "Type your message..." : "Type a command..."}
           autoComplete="off"
           autoCorrect="off"
           autoCapitalize="off"
@@ -1060,7 +1182,7 @@ export const Terminal: React.FC<TerminalProps> = ({
         selectedIndex={selectedCompletionIndex}
         onSelect={handleCompletionSelect}
         position={completionPosition}
-        visible={showCompletions}
+        visible={showCompletions && !isInChatMode}
         alignBottom={true}
       />
 
@@ -1069,7 +1191,7 @@ export const Terminal: React.FC<TerminalProps> = ({
         selectedIndex={selectedCompletionIndex}
         onSelect={handleCompletionSelect}
         position={completionPosition}
-        visible={showLiveSuggestions}
+        visible={showLiveSuggestions && !isInChatMode}
         alignBottom={true}
       />
     </div>

@@ -26,3 +26,15 @@ export const selectSearchNewTab = (state: RootState) => state.config.search.newT
 
 export const selectTerminalConfig = (state: RootState) => state.config.terminal;
 export const selectLiveSuggestions = (state: RootState) => state.config.terminal.liveSuggestions;
+
+// OpenAI selectors
+export const selectOpenAIConfig = (state: RootState) => state.openai.config;
+export const selectOpenAIChats = (state: RootState) => state.openai.chats;
+export const selectCurrentChatId = (state: RootState) => state.openai.currentChatId;
+export const selectIsInChatMode = (state: RootState) => state.openai.isInChatMode;
+export const selectIsStreaming = (state: RootState) => state.openai.isStreaming;
+
+export const selectCurrentChat = createSelector(
+  [selectCurrentChatId, selectOpenAIChats],
+  (currentChatId, chats) => currentChatId ? chats[currentChatId] : null
+);

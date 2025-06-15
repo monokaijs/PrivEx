@@ -13,18 +13,20 @@ import storage from 'redux-persist/lib/storage';
 
 import themeReducer from './slices/themeSlice';
 import configReducer from './slices/configSlice';
+import openaiReducer from './slices/openaiSlice';
 import autoMergeLevel2 from "redux-persist/es/stateReconciler/autoMergeLevel2";
 
 const rootReducer = combineReducers({
   theme: themeReducer,
   config: configReducer,
+  openai: openaiReducer,
 });
 
 const persistedReducer = persistReducer({
   key: 'root',
   version: 1,
   storage,
-  whitelist: ['theme', 'config'],
+  whitelist: ['theme', 'config', 'openai'],
   stateReconciler: autoMergeLevel2,
 } as any, rootReducer);
 
