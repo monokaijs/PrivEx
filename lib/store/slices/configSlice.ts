@@ -3,6 +3,7 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 interface BackgroundConfig {
   image: string;
   brightness: number;
+  blur: number;
 }
 
 interface SearchConfig {
@@ -24,6 +25,7 @@ const initialState: ConfigState = {
   background: {
     image: '',
     brightness: 0.2,
+    blur: 12,
   },
   search: {
     engine: 'google',
@@ -45,6 +47,12 @@ const configSlice = createSlice({
       const brightness = action.payload;
       if (brightness >= 0 && brightness <= 1) {
         state.background.brightness = brightness;
+      }
+    },
+    setBackgroundBlur: (state, action: PayloadAction<number>) => {
+      const blur = action.payload;
+      if (blur >= 0 && blur <= 100) {
+        state.background.blur = blur;
       }
     },
     setBackgroundConfig: (state, action: PayloadAction<BackgroundConfig>) => {
@@ -71,6 +79,7 @@ const configSlice = createSlice({
 export const {
   setBackgroundImage,
   setBackgroundBrightness,
+  setBackgroundBlur,
   setBackgroundConfig,
   setSearchEngine,
   setSearchNewTab,

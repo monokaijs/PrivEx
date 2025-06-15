@@ -36,6 +36,13 @@ The terminal supports intelligent autocomplete with two modes:
   Visual indicators: ⚡ commands, 🌐 domains, 📁 files, 🎨 themes
   Test domains: domains test <query>, domains cache, domains clear
 
+🔍 GOOGLE SEARCH SUGGESTIONS:
+  When typing queries with whitespace that don't match commands (3+ chars)
+  Fetches real-time suggestions from Google's autocomplete API
+  Click suggestions to execute search command directly
+  Works for queries like: "how to code", "javascript tutorial", "best practices"
+  Visual indicator: 🔍 search suggestions
+
 🔍 SMART NAVIGATION & SEARCH:
   Type domains/URLs (e.g., "github.com", "https://example.com") to open directly
   Type anything with spaces (e.g., "javascript tutorials") to search automatically
@@ -74,6 +81,6 @@ The terminal supports intelligent autocomplete with two modes:
   - Live suggestions with 300ms debounce
   - Configurable suggestion modes
 
-Try typing a partial command or filename to see live suggestions, or press Tab for traditional completion!`;
+Try typing a partial command, filename, or search query to see live suggestions, or press Tab for traditional completion!`;
   }
 });

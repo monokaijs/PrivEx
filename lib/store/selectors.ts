@@ -18,6 +18,7 @@ export const selectCurrentTheme = createSelector(
 export const selectBackgroundConfig = (state: RootState) => state.config.background;
 export const selectBackgroundImage = (state: RootState) => state.config.background.image;
 export const selectBackgroundBrightness = (state: RootState) => state.config.background.brightness;
+export const selectBackgroundBlur = (state: RootState) => state.config.background.blur;
 
 export const selectSearchConfig = (state: RootState) => state.config.search;
 export const selectSearchEngine = (state: RootState) => state.config.search.engine;

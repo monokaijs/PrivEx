@@ -1,11 +1,12 @@
 import {defineCommand} from './types';
 import {store} from '../store';
-import {setBackgroundBrightness, setBackgroundImage, setLiveSuggestions} from '../store/slices/configSlice';
+import {setBackgroundBrightness, setBackgroundBlur, setBackgroundImage, setLiveSuggestions} from '../store/slices/configSlice';
 import {selectBackgroundConfig, selectTerminalConfig} from '../store/selectors';
 
 interface BackgroundConfig {
   image?: string;
   brightness?: number;
+  blur?: number;
 }
 
 interface TerminalConfig {
@@ -62,14 +63,14 @@ export const configCommand = defineCommand({
     },
     {
       name: 'property',
-      type: ['image', 'brightness', 'live-suggestions'],
-      description: 'Property to configure: image, brightness, or live-suggestions',
+      type: ['image', 'brightness', 'blur', 'live-suggestions'],
+      description: 'Property to configure: image, brightness, blur, or live-suggestions',
       required: false
     },
     {
       name: 'value',
       type: 'string',
-      description: 'Value to set (URL for image, 0-1 for brightness, true/false for live-suggestions)',
+      description: 'Value to set (URL for image, 0-1 for brightness, 0-100 for blur, true/false for live-suggestions)',
       required: false
     }
   ],
@@ -79,6 +80,8 @@ export const configCommand = defineCommand({
     'config background image ""',
     'config background brightness 0.8',
     'config background brightness 0.2',
+    'config background blur 25',
+    'config background blur 0',
     'config terminal live-suggestions true',
     'config terminal live-suggestions false'
   ],
@@ -95,6 +98,7 @@ export const configCommand = defineCommand({
 Background:
   Image: ${backgroundConfig.image || '(none)'}
   Brightness: ${backgroundConfig.brightness}
+  Blur: ${backgroundConfig.blur}
 
 Terminal:
   Live Suggestions: ${terminalConfig.liveSuggestions ? 'enabled' : 'disabled'}
@@ -103,6 +107,7 @@ Usage:
   config background image <url>        Set background image URL
   config background image ""           Remove background image
   config background brightness <0-1>   Set terminal opacity (0=transparent, 1=opaque)
+  config background blur <0-100>       Set backdrop blur (0=no blur, 100=max blur)
   config terminal live-suggestions <true|false>  Enable/disable live autocomplete suggestions`;
       }
 
@@ -115,8 +120,9 @@ Usage:
           return `Background Configuration:
 Image: ${config.image || '(none)'}
 Brightness: ${config.brightness}
+Blur: ${config.blur}
 
-Use: config background <image|brightness> <value>`;
+Use: config background <image|brightness|blur> <value>`;
         }
 
         if (property === 'image') {
@@ -155,7 +161,25 @@ Use: config background <image|brightness> <value>`;
           return `Background brightness set to: ${brightness}`;
         }
 
-        return 'Invalid property. Use: image or brightness';
+        if (property === 'blur') {
+          if (value === undefined) {
+            return 'Please specify blur value (0-100)';
+          }
+
+          const blur = parseFloat(value);
+          if (isNaN(blur) || blur < 0 || blur > 100) {
+            return 'Blur must be a number between 0 (no blur) and 100 (max blur)';
+          }
+
+          store.dispatch(setBackgroundBlur(blur));
+
+          const config = getBackgroundConfig();
+          applyBackgroundConfig(config);
+
+          return `Background blur set to: ${blur}`;
+        }
+
+        return 'Invalid property. Use: image, brightness, or blur';
       }
 
       if (setting === 'terminal') {

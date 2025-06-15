@@ -5,6 +5,7 @@ import {executeCommand} from '../commands/registry';
 import type {CommandContext, HistoryEntry} from '../commands/types';
 import {useAppSelector} from '../store/hooks';
 import {
+  selectBackgroundBlur,
   selectBackgroundBrightness,
   selectBackgroundConfig,
   selectCurrentTheme,
@@ -80,6 +81,7 @@ export const Terminal: React.FC<TerminalProps> = ({
   const currentThemeName = useAppSelector(selectCurrentThemeName);
   const backgroundConfig = useAppSelector(selectBackgroundConfig);
   const brightness = useAppSelector(selectBackgroundBrightness);
+  const blur = useAppSelector(selectBackgroundBlur);
   const liveSuggestionsEnabled = useAppSelector(selectLiveSuggestions);
 
   useEffect(() => {
@@ -495,6 +497,10 @@ export const Terminal: React.FC<TerminalProps> = ({
     const isDomainSuggestion = activeResult.completionsWithTypes &&
       activeResult.completionsWithTypes[index]?.type === 'domain';
 
+    // Check if this is a search suggestion
+    const isSearchSuggestion = activeResult.completionsWithTypes &&
+      activeResult.completionsWithTypes[index]?.type === 'search';
+
     if (isDomainSuggestion) {
       // For domain suggestions, open URL directly instead of setting input
       try {
@@ -539,6 +545,55 @@ export const Terminal: React.FC<TerminalProps> = ({
         }
       } catch (error) {
         console.error('Failed to open URL:', error);
+        // Fall back to normal completion behavior
+        const newInput = activeResult.originalInput.substring(0, activeResult.replaceStart) +
+          completion +
+          activeResult.originalInput.substring(activeResult.replaceEnd);
+        setCurrentInput(newInput);
+        inputRef.current.value = newInput;
+      }
+    } else if (isSearchSuggestion) {
+      // For search suggestions, execute search command directly
+      try {
+        // Execute search command directly
+        const {executeCommand} = await import('../commands/registry');
+        const ctx = {
+          history,
+          setHistory,
+          input: currentInput,
+          setInput: setCurrentInput,
+          commandHistory,
+          setCommandHistory,
+          setHistoryIndex
+        };
+
+        await executeCommand('search', [completion], ctx);
+
+        // Clear input and show in terminal
+        const terminal = xtermRef.current;
+        if (terminal) {
+          terminal.writeln(`$ search ${completion}`);
+          terminal.writeln('');
+          terminal.write(`\x1b[32mSearching for: "${completion}"\x1b[0m`);
+          terminal.writeln('');
+        }
+
+        // Update history
+        setHistory(prev => [...prev, {
+          command: `search ${completion}`,
+          output: `Searching for: "${completion}"`,
+          type: 'success'
+        }]);
+
+        // Update command history
+        setCommandHistory(prev => [...prev, `search ${completion}`]);
+        setHistoryIndex(-1);
+        setCurrentInput('');
+        if (inputRef.current) {
+          inputRef.current.value = '';
+        }
+      } catch (error) {
+        console.error('Failed to execute search:', error);
         // Fall back to normal completion behavior
         const newInput = activeResult.originalInput.substring(0, activeResult.replaceStart) +
           completion +
@@ -804,6 +859,7 @@ export const Terminal: React.FC<TerminalProps> = ({
         style={{
           backgroundColor: 'var(--terminal-bg)',
           opacity: 1 - brightness,
+          backdropFilter: `blur(${blur}px)`,
           position: 'absolute',
           top: 0,
           left: 0,
@@ -821,6 +877,7 @@ export const Terminal: React.FC<TerminalProps> = ({
           minHeight: 0,
           padding: 8,
           zIndex: 1,
+          backdropFilter: `blur(${blur}px)`
         }}
       />
       <div
@@ -832,7 +889,7 @@ export const Terminal: React.FC<TerminalProps> = ({
           color: currentTheme.colors.background,
           fontSize: '12px',
           fontFamily: currentTheme.typography?.fontFamily || 'JetBrains Mono, monospace',
-          fontWeight: 'bold',
+          fontWeight: 'normal',
           flexShrink: 0,
           zIndex: 1,
         }}
@@ -967,7 +1024,7 @@ export const Terminal: React.FC<TerminalProps> = ({
             fontFamily: currentTheme.typography?.fontFamily || 'JetBrains Mono, monospace',
             marginRight: '8px',
             userSelect: 'none',
-            fontWeight: 'bold'
+            fontWeight: 'normal'
           }}
         >
           $

@@ -21,7 +21,7 @@
   --terminal-font-family: "JetBrains Mono", 'Courier New', 'Monaco', 'Menlo', monospace;
   --terminal-font-size: 14px;
   --terminal-line-height: 1.4;
-  --terminal-font-weight: normal;
+  --terminal-font-weight: 600;
   --terminal-padding: 20px;
   --terminal-border-radius: 0px;
   --terminal-cursor-blink-speed: 500ms;
@@ -40,6 +40,7 @@ html {
   background-color: var(--terminal-bg);
   color: var(--terminal-text);
   overflow: hidden;
+  font-weight: 500;
 }
 
 body {

@@ -103,7 +103,7 @@ export const searchCommand = defineCommand({
 
       // Navigate to the URL
       if (config.newTab) {
-        window.open(url, '_blank');
+        window.open(url);
       } else {
         window.location.href = url;
       }
@@ -260,7 +260,7 @@ export const youtubeCommand = defineCommand({
         url = 'https://www.youtube.com';
       }
 
-      window.open(url, '_blank');
+      window.open(url);
 
       if (args.query && args.query.trim()) {
         return `Searching YouTube for: "${args.query}"`;
@@ -304,7 +304,7 @@ export const stackoverflowCommand = defineCommand({
         url = 'https://stackoverflow.com';
       }
 
-      window.open(url, '_blank');
+      window.open(url);
 
       if (args.query && args.query.trim()) {
         return `Searching Stack Overflow for: "${args.query}"`;

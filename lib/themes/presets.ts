@@ -26,8 +26,8 @@ export const darkTheme: TerminalTheme = {
     accent: '#ffffff'
   },
   typography: {
-    fontFamily: "'Courier New', 'Monaco', 'Menlo', monospace",
-    fontSize: '14px',
+    fontFamily: "'Jetbrains Mono', 'Monaco', 'Menlo', 'Courier New', monospace",
+    fontSize: '12px',
     lineHeight: 1.4,
     fontWeight: 'normal'
   },
@@ -70,8 +70,8 @@ export const lightTheme: TerminalTheme = {
     accent: '#0066cc'
   },
   typography: {
-    fontFamily: "'Courier New', 'Monaco', 'Menlo', monospace",
-    fontSize: '14px',
+    fontFamily: "'Jetbrains Mono', 'Monaco', 'Menlo', 'Courier New', monospace",
+    fontSize: '12px',
     lineHeight: 1.4,
     fontWeight: 'normal'
   },
@@ -114,8 +114,8 @@ export const matrixTheme: TerminalTheme = {
     accent: '#00ff41'
   },
   typography: {
-    fontFamily: "'Courier New', 'Monaco', 'Menlo', monospace",
-    fontSize: '14px',
+    fontFamily: "'Jetbrains Mono', 'Monaco', 'Menlo', 'Courier New', monospace",
+    fontSize: '12px',
     lineHeight: 1.4,
     fontWeight: 'normal'
   },
@@ -158,8 +158,8 @@ export const retroTheme: TerminalTheme = {
     accent: '#ffb000'
   },
   typography: {
-    fontFamily: "'Courier New', 'Monaco', 'Menlo', monospace",
-    fontSize: '14px',
+    fontFamily: "'Jetbrains Mono', 'Monaco', 'Menlo', 'Courier New', monospace",
+    fontSize: '12px',
     lineHeight: 1.4,
     fontWeight: 'normal'
   },

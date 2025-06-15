@@ -1,10 +1,10 @@
-import { fileSystem } from './filesystem';
-import { PathUtils } from './filesystem-types';
-import { getRegisteredCommands } from '../commands/registry';
-import { presetThemes } from '../themes/presets';
-import { store } from '../store';
-import { selectCustomThemes } from '../store/selectors';
-import { domainService } from './domains';
+import {fileSystem} from './filesystem';
+import {PathUtils} from './filesystem-types';
+import {getRegisteredCommands} from '../commands/registry';
+import {presetThemes} from '../themes/presets';
+import {store} from '../store';
+import {selectCustomThemes} from '../store/selectors';
+import {domainService} from './domains';
 
 export interface CompletionProvider {
   name: string;
@@ -82,17 +82,17 @@ export const fileCompletionProvider: CompletionProvider = {
   getCompletions: async (context) => {
     try {
       await fileSystem.initialize();
-      
+
       // Determine the directory to search in
       let searchDir: string;
       let filePrefix: string;
-      
+
       if (context.currentArg.includes('/')) {
         // Path contains directory separators
         const lastSlash = context.currentArg.lastIndexOf('/');
         const dirPart = context.currentArg.substring(0, lastSlash + 1);
         filePrefix = context.currentArg.substring(lastSlash + 1);
-        
+
         if (dirPart.startsWith('/')) {
           // Absolute path
           searchDir = PathUtils.normalize(dirPart);
@@ -115,7 +115,7 @@ export const fileCompletionProvider: CompletionProvider = {
 
       // Filter and format results
       const completions: string[] = [];
-      
+
       for (const item of items) {
         if (!item.name.toLowerCase().startsWith(filePrefix.toLowerCase())) {
           continue;
@@ -123,7 +123,7 @@ export const fileCompletionProvider: CompletionProvider = {
 
         // Format the completion
         let completion = item.name;
-        
+
         // Add trailing slash for directories
         if (item.type === 'directory') {
           completion += '/';
@@ -152,15 +152,15 @@ export const fileCompletionProvider: CompletionProvider = {
 export const themeCompletionProvider: CompletionProvider = {
   name: 'themes',
   canComplete: (context) => {
-    return context.commandName === 'theme' && 
-           context.args.length > 0 && 
-           ['set', 'export'].includes(context.args[0]);
+    return context.commandName === 'theme' &&
+      context.args.length > 0 &&
+      ['set', 'export'].includes(context.args[0]);
   },
   getCompletions: (context) => {
     const state = store.getState();
     const customThemes = selectCustomThemes(state);
-    
-    const allThemes = { ...presetThemes, ...customThemes };
+
+    const allThemes = {...presetThemes, ...customThemes};
     return Object.keys(allThemes)
       .filter(name => name.toLowerCase().startsWith(context.currentArg.toLowerCase()))
       .sort();
@@ -173,13 +173,13 @@ export const themeCompletionProvider: CompletionProvider = {
 export const searchEngineCompletionProvider: CompletionProvider = {
   name: 'searchEngines',
   canComplete: (context) => {
-    return context.commandName === 'search-config' && 
-           context.args.length > 0 && 
-           context.args[0] === 'engine';
+    return context.commandName === 'search-config' &&
+      context.args.length > 0 &&
+      context.args[0] === 'engine';
   },
   getCompletions: (context) => {
     const engines = ['google', 'bing', 'duckduckgo', 'yahoo'];
-    return engines.filter(engine => 
+    return engines.filter(engine =>
       engine.toLowerCase().startsWith(context.currentArg.toLowerCase())
     );
   }
@@ -194,14 +194,20 @@ export const configCompletionProvider: CompletionProvider = {
   getCompletions: (context) => {
     if (context.argIndex === 0) {
       // First argument - config sections
-      const sections = ['background', 'show'];
-      return sections.filter(section => 
+      const sections = ['background', 'terminal', 'show'];
+      return sections.filter(section =>
         section.toLowerCase().startsWith(context.currentArg.toLowerCase())
       );
     } else if (context.argIndex === 1 && context.args[0] === 'background') {
       // Second argument for background config
-      const properties = ['image', 'brightness'];
-      return properties.filter(prop => 
+      const properties = ['image', 'brightness', 'blur'];
+      return properties.filter(prop =>
+        prop.toLowerCase().startsWith(context.currentArg.toLowerCase())
+      );
+    } else if (context.argIndex === 1 && context.args[0] === 'terminal') {
+      // Second argument for terminal config
+      const properties = ['live-suggestions'];
+      return properties.filter(prop =>
         prop.toLowerCase().startsWith(context.currentArg.toLowerCase())
       );
     }
@@ -216,14 +222,14 @@ export const booleanCompletionProvider: CompletionProvider = {
   name: 'boolean',
   canComplete: (context) => {
     // Check if current argument expects a boolean
-    return context.currentArg.toLowerCase().startsWith('t') || 
-           context.currentArg.toLowerCase().startsWith('f') ||
-           context.currentArg.toLowerCase().startsWith('y') ||
-           context.currentArg.toLowerCase().startsWith('n');
+    return context.currentArg.toLowerCase().startsWith('t') ||
+      context.currentArg.toLowerCase().startsWith('f') ||
+      context.currentArg.toLowerCase().startsWith('y') ||
+      context.currentArg.toLowerCase().startsWith('n');
   },
   getCompletions: (context) => {
     const booleans = ['true', 'false', 'yes', 'no'];
-    return booleans.filter(bool => 
+    return booleans.filter(bool =>
       bool.toLowerCase().startsWith(context.currentArg.toLowerCase())
     );
   }
@@ -235,10 +241,10 @@ export const booleanCompletionProvider: CompletionProvider = {
 export const urlCompletionProvider: CompletionProvider = {
   name: 'urls',
   canComplete: (context) => {
-    return context.commandName === 'open' || 
-           (context.commandName === 'config' && 
-            context.args[0] === 'background' && 
-            context.args[1] === 'image');
+    return context.commandName === 'open' ||
+      (context.commandName === 'config' &&
+        context.args[0] === 'background' &&
+        context.args[1] === 'image');
   },
   getCompletions: (context) => {
     const commonUrls = [
@@ -255,7 +261,7 @@ export const urlCompletionProvider: CompletionProvider = {
     ];
 
     // Add protocol if not present
-    const suggestions = commonUrls
+    return commonUrls
       .filter(url => url.toLowerCase().includes(context.currentArg.toLowerCase()))
       .map(url => {
         if (context.currentArg.startsWith('http')) {
@@ -263,10 +269,164 @@ export const urlCompletionProvider: CompletionProvider = {
         }
         return url;
       });
-
-    return suggestions;
   }
 };
+
+/**
+ * Google search suggestions provider for queries with whitespace
+ */
+export const googleSuggestionsProvider: CompletionProvider = {
+  name: 'googleSuggestions',
+  priority: 30, // Lower priority than commands and domains
+  canComplete: (context) => {
+    // Only suggest when:
+    // 1. Input contains whitespace (indicating it's a search query, not a command)
+    // 2. First word doesn't match any existing command
+    // 3. At least 3 characters typed for meaningful suggestions
+    const hasWhitespace = context.input.includes(' ');
+    const isLongEnough = context.input.trim().length >= 3;
+
+    if (!hasWhitespace || !isLongEnough) {
+      return false;
+    }
+
+    // Check if first word matches any command
+    const firstWord = context.input.trim().split(' ')[0].toLowerCase();
+    const commands = getRegisteredCommands();
+    const commandExists = commands[firstWord] !== undefined;
+
+    return !commandExists;
+  },
+  getCompletions: async (context) => {
+    try {
+      const query = context.input.trim();
+      const suggestions = await fetchGoogleSuggestions(query);
+      return suggestions;
+    } catch (error) {
+      console.warn('Google suggestions provider failed:', error);
+      return [];
+    }
+  }
+};
+
+/**
+ * Fetch Google search suggestions using fetch API
+ */
+async function fetchGoogleSuggestions(query: string): Promise<string[]> {
+  try {
+    const trimmedQuery = query.substring(0, 100);
+    const endpoint = `https://suggestqueries.google.com/complete/search?client=firefox&q=${encodeURIComponent(trimmedQuery)}`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+
+    const response = await fetch(endpoint, {
+      signal: controller.signal,
+      headers: {
+        'Accept': 'application/json',
+      }
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    // Suggestions are in the second element of the response array
+    if (data && data[1] && Array.isArray(data[1])) {
+      return data[1]
+        .slice(0, 5) // Limit to 5 suggestions
+        .filter((suggestion: string) => suggestion && suggestion.trim().length > 0);
+    }
+
+    return [];
+  } catch (error) {
+    console.warn('Failed to fetch Google suggestions:', error);
+    return getFallbackSuggestions(query);
+  }
+}
+
+/**
+ * Generate intelligent fallback suggestions when API fails
+ */
+function getFallbackSuggestions(query: string): string[] {
+  const lowerQuery = query.toLowerCase().trim();
+
+  // Common programming and tech-related suggestions
+  const suggestionPatterns: Record<string, string[]> = {
+    'how to': [
+      'how to learn programming',
+      'how to code',
+      'how to debug',
+      'how to optimize performance',
+      'how to deploy applications'
+    ],
+    'javascript': [
+      'javascript tutorial',
+      'javascript frameworks',
+      'javascript best practices',
+      'javascript async await',
+      'javascript debugging tips'
+    ],
+    'react': [
+      'react hooks tutorial',
+      'react components guide',
+      'react state management',
+      'react best practices',
+      'react performance optimization'
+    ],
+    'python': [
+      'python tutorial for beginners',
+      'python data science',
+      'python web development',
+      'python automation scripts',
+      'python best practices'
+    ],
+    'css': [
+      'css grid layout',
+      'css flexbox guide',
+      'css animations tutorial',
+      'css responsive design',
+      'css best practices'
+    ]
+  };
+
+  // Find matching suggestions based on keywords
+  for (const [keyword, suggestions] of Object.entries(suggestionPatterns)) {
+    if (lowerQuery.includes(keyword)) {
+      return suggestions
+        .filter(suggestion =>
+          suggestion.toLowerCase().includes(lowerQuery) ||
+          lowerQuery.includes(keyword)
+        )
+        .slice(0, 5);
+    }
+  }
+
+  // Generic suggestions based on common question patterns
+  if (lowerQuery.startsWith('how to ')) {
+    const topic = lowerQuery.replace('how to ', '');
+    return [
+      `how to ${topic} tutorial`,
+      `how to ${topic} step by step`,
+      `how to ${topic} best practices`,
+      `how to ${topic} examples`,
+      `how to ${topic} guide`
+    ].slice(0, 5);
+  }
+
+  // Default suggestions
+  return [
+    `${query} tutorial`,
+    `${query} guide`,
+    `${query} examples`,
+    `${query} best practices`,
+    `${query} documentation`
+  ].slice(0, 5);
+}
 
 /**
  * All available completion providers
@@ -279,19 +439,20 @@ export const completionProviders: CompletionProvider[] = [
   searchEngineCompletionProvider,
   configCompletionProvider,
   booleanCompletionProvider,
-  urlCompletionProvider
+  urlCompletionProvider,
+  googleSuggestionsProvider
 ];
 
 export interface CompletionWithType {
   value: string;
-  type: 'command' | 'domain' | 'file' | 'theme' | 'config' | 'url' | 'other';
+  type: 'command' | 'domain' | 'file' | 'theme' | 'config' | 'url' | 'search' | 'other';
   provider: string;
 }
 
 /**
- * Get completions from all applicable providers with type information
+ * Internal helper to get completions from all applicable providers
  */
-export async function getCompletionsFromProviders(context: CompletionContext): Promise<string[]> {
+async function getCompletionsByProvider(context: CompletionContext): Promise<{ provider: CompletionProvider; completions: string[] }[]> {
   const completionsByProvider: { provider: CompletionProvider; completions: string[] }[] = [];
 
   // Sort providers by priority (higher first)
@@ -302,7 +463,7 @@ export async function getCompletionsFromProviders(context: CompletionContext): P
       try {
         const completions = await provider.getCompletions(context);
         if (completions.length > 0) {
-          completionsByProvider.push({ provider, completions });
+          completionsByProvider.push({provider, completions});
         }
       } catch (error) {
         console.warn(`Completion provider ${provider.name} failed:`, error);
@@ -310,11 +471,20 @@ export async function getCompletionsFromProviders(context: CompletionContext): P
     }
   }
 
+  return completionsByProvider;
+}
+
+/**
+ * Get completions from all applicable providers with type information
+ */
+export async function getCompletionsFromProviders(context: CompletionContext): Promise<string[]> {
+  const completionsByProvider = await getCompletionsByProvider(context);
+
   // Combine completions maintaining provider order
   const allCompletions: string[] = [];
   const seen = new Set<string>();
 
-  for (const { completions } of completionsByProvider) {
+  for (const {completions} of completionsByProvider) {
     for (const completion of completions) {
       if (!seen.has(completion)) {
         seen.add(completion);
@@ -330,29 +500,13 @@ export async function getCompletionsFromProviders(context: CompletionContext): P
  * Get completions with type information for enhanced display
  */
 export async function getCompletionsWithTypes(context: CompletionContext): Promise<CompletionWithType[]> {
-  const completionsByProvider: { provider: CompletionProvider; completions: string[] }[] = [];
-
-  // Sort providers by priority (higher first)
-  const sortedProviders = [...completionProviders].sort((a, b) => (b.priority || 0) - (a.priority || 0));
-
-  for (const provider of sortedProviders) {
-    if (provider.canComplete(context)) {
-      try {
-        const completions = await provider.getCompletions(context);
-        if (completions.length > 0) {
-          completionsByProvider.push({ provider, completions });
-        }
-      } catch (error) {
-        console.warn(`Completion provider ${provider.name} failed:`, error);
-      }
-    }
-  }
+  const completionsByProvider = await getCompletionsByProvider(context);
 
   // Combine completions with type information
   const allCompletions: CompletionWithType[] = [];
   const seen = new Set<string>();
 
-  for (const { provider, completions } of completionsByProvider) {
+  for (const {provider, completions} of completionsByProvider) {
     const type = getCompletionType(provider.name);
     for (const completion of completions) {
       if (!seen.has(completion)) {
@@ -371,12 +525,21 @@ export async function getCompletionsWithTypes(context: CompletionContext): Promi
 
 function getCompletionType(providerName: string): CompletionWithType['type'] {
   switch (providerName) {
-    case 'commands': return 'command';
-    case 'domains': return 'domain';
-    case 'files': return 'file';
-    case 'themes': return 'theme';
-    case 'config': return 'config';
-    case 'urlCompletionProvider': return 'url';
-    default: return 'other';
+    case 'commands':
+      return 'command';
+    case 'domains':
+      return 'domain';
+    case 'files':
+      return 'file';
+    case 'themes':
+      return 'theme';
+    case 'config':
+      return 'config';
+    case 'urls':
+      return 'url';
+    case 'googleSuggestions':
+      return 'search';
+    default:
+      return 'other';
   }
 }
