@@ -63,13 +63,11 @@ export const Terminal: React.FC<TerminalProps> = ({
   const [currentInput, setCurrentInput] = useState('');
   const [isComposing, setIsComposing] = useState(false);
 
-  // Autocomplete state
   const [completionResult, setCompletionResult] = useState<CompletionResult | null>(null);
   const [selectedCompletionIndex, setSelectedCompletionIndex] = useState(0);
   const [showCompletions, setShowCompletions] = useState(false);
-  const [completionPosition, setCompletionPosition] = useState({ x: 0, y: 0 });
+  const [completionPosition, setCompletionPosition] = useState({x: 0, y: 0});
 
-  // Live suggestions state
   const [showLiveSuggestions, setShowLiveSuggestions] = useState(false);
   const [liveSuggestionResult, setLiveSuggestionResult] = useState<CompletionResult | null>(null);
   const liveSuggestionsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -135,21 +133,6 @@ export const Terminal: React.FC<TerminalProps> = ({
     };
   }, [welcomeMessage, applyGlobalTheme, exposeGlobalContext]);
 
-  // Focus input when terminal is ready
-  useEffect(() => {
-    if (xtermRef.current && inputRef.current) {
-      const focusInput = () => {
-        inputRef.current?.focus();
-      };
-
-      // Focus immediately and with a delay to ensure it works
-      focusInput();
-      setTimeout(focusInput, 100);
-      setTimeout(focusInput, 300);
-    }
-  }, []);
-
-  // Auto-focus when page becomes visible (for new tab scenarios)
   useEffect(() => {
     if (!applyGlobalTheme) return; // Only for main terminal
 
@@ -211,6 +194,31 @@ export const Terminal: React.FC<TerminalProps> = ({
     }
   }, [applyGlobalTheme, backgroundConfig]);
 
+  // Utility function to check if input is a valid domain or URL
+  const isValidDomainOrUrl = useCallback((input: string): boolean => {
+    // Check if it's a valid URL
+    try {
+      new URL(input);
+      return true;
+    } catch {
+      // Not a valid URL, check if it's a domain
+    }
+
+    // Check if it looks like a domain
+    const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+
+    // Must have at least one dot and valid domain format
+    if (!input.includes('.') || !domainRegex.test(input)) {
+      return false;
+    }
+
+    // Check for valid TLD (at least 2 characters)
+    const parts = input.split('.');
+    const tld = parts[parts.length - 1];
+
+    return tld.length >= 2 && /^[a-zA-Z]+$/.test(tld);
+  }, []);
+
   // Handle command execution
   const handleExecuteCommand = useCallback(async (input: string) => {
     const terminal = xtermRef.current;
@@ -253,46 +261,89 @@ export const Terminal: React.FC<TerminalProps> = ({
 
     try {
       // Check if command exists
-      const { getCommand } = await import('../commands/registry');
+      const {getCommand} = await import('../commands/registry');
       const command = getCommand(commandName);
 
-      // If command doesn't exist and input contains whitespace, treat as search
-      if (!command && trimmedCmd.includes(' ')) {
-        // Execute as search command
-        const { executeCommand: execCmd } = await import('../commands/registry');
-        const result = await execCmd('search', [trimmedCmd], ctx);
+      // If command doesn't exist, check for special cases
+      if (!command) {
+        // Case 1: Input contains whitespace → treat as search
+        if (trimmedCmd.includes(' ')) {
+          // Execute as search command
+          const {executeCommand: execCmd} = await import('../commands/registry');
+          const result = await execCmd('search', [trimmedCmd], ctx);
 
-        // Display result
-        if (result.output !== undefined) {
-          const lines = result.output.split('\n');
-          lines.forEach(line => {
+          // Display result
+          if (result.output !== undefined) {
+            const lines = result.output.split('\n');
+            lines.forEach(line => {
+              terminal.writeln('');
+              if (result.type === 'error') {
+                terminal.write(`\x1b[31m${line}\x1b[0m`); // Red for errors
+              } else if (result.type === 'success') {
+                terminal.write(`\x1b[32m${line}\x1b[0m`); // Green for success
+              } else {
+                terminal.write(`\x1b[36m${line}\x1b[0m`); // Cyan for info
+              }
+            });
             terminal.writeln('');
-            if (result.type === 'error') {
-              terminal.write(`\x1b[31m${line}\x1b[0m`); // Red for errors
-            } else if (result.type === 'success') {
-              terminal.write(`\x1b[32m${line}\x1b[0m`); // Green for success
-            } else {
-              terminal.write(`\x1b[36m${line}\x1b[0m`); // Cyan for info
-            }
-          });
-          terminal.writeln('');
+          }
+
+          // Update history
+          setHistory(prev => [...prev, {
+            command: trimmedCmd,
+            output: (result.output || ''),
+            type: result.type
+          }]);
+
+          // Update command history
+          setCommandHistory(prev => [...prev, trimmedCmd]);
+          setHistoryIndex(-1);
+          setCurrentInput('');
+          if (inputRef.current) {
+            inputRef.current.value = '';
+          }
+          return;
         }
 
-        // Update history
-        setHistory(prev => [...prev, {
-          command: trimmedCmd,
-          output: (result.output || ''),
-          type: result.type
-        }]);
+        // Case 2: Input without spaces but is a valid domain or URL → treat as open URL
+        if (!trimmedCmd.includes(' ') && isValidDomainOrUrl(trimmedCmd)) {
+          // Execute as open command
+          const url = trimmedCmd.startsWith('http') ? trimmedCmd : `https://${trimmedCmd}`;
+          const {executeCommand: execCmd} = await import('../commands/registry');
+          const result = await execCmd('open', [url], ctx);
 
-        // Update command history
-        setCommandHistory(prev => [...prev, trimmedCmd]);
-        setHistoryIndex(-1);
-        setCurrentInput('');
-        if (inputRef.current) {
-          inputRef.current.value = '';
+          // Display result
+          if (result.output !== undefined) {
+            const lines = result.output.split('\n');
+            lines.forEach(line => {
+              terminal.writeln('');
+              if (result.type === 'error') {
+                terminal.write(`\x1b[31m${line}\x1b[0m`); // Red for errors
+              } else if (result.type === 'success') {
+                terminal.write(`\x1b[32m${line}\x1b[0m`); // Green for success
+              } else {
+                terminal.write(`\x1b[36m${line}\x1b[0m`); // Cyan for info
+              }
+            });
+            terminal.writeln('');
+          }
+
+          // Update history
+          setHistory(prev => [...prev, {
+            command: `open ${url}`,
+            output: (result.output || `Opening ${trimmedCmd}...`),
+            type: result.type
+          }]);
+
+          // Update command history
+          setCommandHistory(prev => [...prev, `open ${url}`]);
+          setHistoryIndex(-1);
+          setCurrentInput('');
+          if (inputRef.current) {
+            inputRef.current.value = '';
+          }
+          return;
         }
-        return;
       }
 
       // Execute command normally
@@ -333,7 +384,7 @@ export const Terminal: React.FC<TerminalProps> = ({
     if (inputRef.current) {
       inputRef.current.value = '';
     }
-  }, [history, currentInput, commandHistory, onClose]);
+  }, [history, currentInput, commandHistory, onClose, isValidDomainOrUrl]);
 
   // Handle autocomplete
   const handleTabCompletion = useCallback(async () => {
@@ -352,13 +403,12 @@ export const Terminal: React.FC<TerminalProps> = ({
       // Single completion - auto-complete immediately
       const completion = result.completions[0];
       const newInput = currentInput.substring(0, result.replaceStart) +
-                      completion +
-                      currentInput.substring(result.replaceEnd);
+        completion +
+        currentInput.substring(result.replaceEnd);
 
       setCurrentInput(newInput);
       if (inputRef.current) {
         inputRef.current.value = newInput;
-        // Set cursor position after the completion
         const newCursorPos = result.replaceStart + completion.length;
         setTimeout(() => {
           inputRef.current?.setSelectionRange(newCursorPos, newCursorPos);
@@ -366,13 +416,11 @@ export const Terminal: React.FC<TerminalProps> = ({
       }
       setShowCompletions(false);
     } else {
-      // Multiple completions - show list or complete common prefix
       const currentArgLength = currentInput.substring(result.replaceStart, result.replaceEnd).length;
       if (result.commonPrefix.length > currentArgLength) {
-        // Complete the common prefix
         const newInput = currentInput.substring(0, result.replaceStart) +
-                        result.commonPrefix +
-                        currentInput.substring(result.replaceEnd);
+          result.commonPrefix +
+          currentInput.substring(result.replaceEnd);
 
         setCurrentInput(newInput);
         if (inputRef.current) {
@@ -384,24 +432,21 @@ export const Terminal: React.FC<TerminalProps> = ({
         }
       }
 
-      // Show completion list
       setCompletionResult(result);
       setSelectedCompletionIndex(0);
       setShowCompletions(true);
 
-      // Calculate position for completion list (above the input)
       if (inputRef.current) {
         const rect = inputRef.current.getBoundingClientRect();
-        const spacing = 8; // Space between input and list
+        const spacing = 8;
         setCompletionPosition({
           x: rect.left,
-          y: rect.top - spacing // Position just above the input, let CompletionList handle height
+          y: rect.top - spacing
         });
       }
     }
   }, [currentInput]);
 
-  // Handle live suggestions (triggered on input change)
   const handleLiveSuggestions = useCallback(async (input: string) => {
     if (!liveSuggestionsEnabled || !inputRef.current || input.trim() === '') {
       setShowLiveSuggestions(false);
@@ -409,12 +454,10 @@ export const Terminal: React.FC<TerminalProps> = ({
       return;
     }
 
-    // Clear existing timeout
     if (liveSuggestionsTimeoutRef.current) {
       clearTimeout(liveSuggestionsTimeoutRef.current);
     }
 
-    // Debounce the suggestions
     liveSuggestionsTimeoutRef.current = setTimeout(async () => {
       try {
         const cursorPosition = inputRef.current?.selectionStart || input.length;
@@ -424,7 +467,6 @@ export const Terminal: React.FC<TerminalProps> = ({
           setLiveSuggestionResult(result);
           setShowLiveSuggestions(true);
 
-          // Calculate position above the input
           if (inputRef.current) {
             const rect = inputRef.current.getBoundingClientRect();
             const spacing = 8; // Space between input and list
@@ -438,11 +480,10 @@ export const Terminal: React.FC<TerminalProps> = ({
           setLiveSuggestionResult(null);
         }
       } catch (error) {
-        // Silently handle errors in live suggestions
         setShowLiveSuggestions(false);
         setLiveSuggestionResult(null);
       }
-    }, 100); // 300ms debounce
+    }, 50);
   }, [liveSuggestionsEnabled]);
 
   const handleCompletionSelect = useCallback(async (completion: string, index: number) => {
@@ -452,7 +493,7 @@ export const Terminal: React.FC<TerminalProps> = ({
 
     // Check if this is a domain suggestion (web URL)
     const isDomainSuggestion = activeResult.completionsWithTypes &&
-                              activeResult.completionsWithTypes[index]?.type === 'domain';
+      activeResult.completionsWithTypes[index]?.type === 'domain';
 
     if (isDomainSuggestion) {
       // For domain suggestions, open URL directly instead of setting input
@@ -460,7 +501,7 @@ export const Terminal: React.FC<TerminalProps> = ({
         const url = completion.startsWith('http') ? completion : `https://${completion}`;
 
         // Execute open command directly
-        const { executeCommand } = await import('../commands/registry');
+        const {executeCommand} = await import('../commands/registry');
         const ctx = {
           history,
           setHistory,
@@ -500,16 +541,16 @@ export const Terminal: React.FC<TerminalProps> = ({
         console.error('Failed to open URL:', error);
         // Fall back to normal completion behavior
         const newInput = activeResult.originalInput.substring(0, activeResult.replaceStart) +
-                        completion +
-                        activeResult.originalInput.substring(activeResult.replaceEnd);
+          completion +
+          activeResult.originalInput.substring(activeResult.replaceEnd);
         setCurrentInput(newInput);
         inputRef.current.value = newInput;
       }
     } else {
       // Normal completion behavior for commands, files, etc.
       const newInput = activeResult.originalInput.substring(0, activeResult.replaceStart) +
-                      completion +
-                      activeResult.originalInput.substring(activeResult.replaceEnd);
+        completion +
+        activeResult.originalInput.substring(activeResult.replaceEnd);
 
       setCurrentInput(newInput);
       inputRef.current.value = newInput;
@@ -957,7 +998,6 @@ export const Terminal: React.FC<TerminalProps> = ({
         />
       </div>
 
-      {/* Tab-triggered autocomplete completion list */}
       <CompletionList
         completions={completionResult?.completionsWithTypes || completionResult?.completions || []}
         selectedIndex={selectedCompletionIndex}
@@ -967,7 +1007,6 @@ export const Terminal: React.FC<TerminalProps> = ({
         alignBottom={true}
       />
 
-      {/* Live suggestions completion list */}
       <CompletionList
         completions={liveSuggestionResult?.completionsWithTypes || liveSuggestionResult?.completions || []}
         selectedIndex={selectedCompletionIndex}

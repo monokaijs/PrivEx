@@ -36,9 +36,10 @@ The terminal supports intelligent autocomplete with two modes:
   Visual indicators: ⚡ commands, 🌐 domains, 📁 files, 🎨 themes
   Test domains: domains test <query>, domains cache, domains clear
 
-🔍 SMART SEARCH:
+🔍 SMART NAVIGATION & SEARCH:
+  Type domains/URLs (e.g., "github.com", "https://example.com") to open directly
   Type anything with spaces (e.g., "javascript tutorials") to search automatically
-  No need to type 'search' command first - just type your query
+  No need to type 'open' or 'search' commands first - just type what you want
   Uses your configured search engine (default: Google)
 
 📁 FILE & DIRECTORY COMPLETION:
